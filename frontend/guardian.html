@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>健康守护 · 监护人模式</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <h1>👨‍👩‍👧 监护人端</h1>
+    <div class="nav">
+      <select id="user-select" style="width:180px"></select>
+      <a href="/">返回首页</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="grid-2">
+      <div class="card">
+        <h2>📊 最新身体指标</h2>
+        <div class="metric-grid" id="latest-metrics"></div>
+      </div>
+      <div class="card">
+        <h2>⏰ 今日待办（医嘱/测量）</h2>
+        <div id="due-list" class="small muted">加载中…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🚨 告警与通知 <span class="badge red" id="unread-badge" style="display:none"></span></h2>
+      <div id="alert-list"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h2 style="margin:0">📈 指标趋势（近 30 天）</h2>
+        <button class="btn ghost" id="gen-weekly">生成周报</button>
+      </div>
+      <div id="charts"></div>
+    </div>
+
+    <div class="card" id="report-card" style="display:none">
+      <h2>📄 健康报告</h2>
+      <div id="report-body"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/guardian.js"></script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>健康守护 · 医生模式</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <h1>🩺 医生端</h1>
+    <div class="nav">
+      <select id="user-select" style="width:180px"></select>
+      <a href="/">返回首页</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h2>患者档案</h2>
+      <div id="patient-info" class="small"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h2 style="margin:0">近 7 天健康报告</h2>
+        <button class="btn primary" id="export-btn">导出诊断凭据（FHIR/JSON）</button>
+      </div>
+      <div id="report-body"></div>
+    </div>
+
+    <div class="card">
+      <h2>📈 指标趋势（近 30 天）</h2>
+      <div id="charts"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/doctor.js"></script>
+</body>
+</html>

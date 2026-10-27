@@ -10,13 +10,21 @@ __pycache__/
 venv/
 env/
 
+# 运行时数据库与数据（仅根目录 data/；app/data/ 是医学知识库，需提交）
+/data/
+*.db
+*.db-wal
+*.db-shm
+
 # 测试与缓存
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Streamlit
-.streamlit/secrets.toml
+# PyInstaller 打包产物
+build/
+dist/
+*.spec
 
 # 日志与临时文件
 logs/

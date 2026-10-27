@@ -1,4 +1,4 @@
-streamlit>=1.32,<2.0
-openai>=1.30
-python-dotenv>=1.0
-pytest>=8.0
+# MedAgent 后端依赖（MVP：本地桌面式应用，SQLite 存储，零重型依赖）
+starlette>=0.40
+uvicorn>=0.30
+pydantic>=2.6
