@@ -150,9 +150,11 @@ python -m PyInstaller --noconfirm --onefile --name MedAgent \
    ```bash
    python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
    ```
-3. **端口是否被占用**：启动报 `address already in use` 时，换个端口：
+3. **报 `No module named 'starlette'`（最常见）**：说明依赖没装上。先执行第 2 步；仍不行就确认 `pip` 能联网。
+4. **端口是否被占用**：启动报 `address already in use` 时，换个端口：
    ```bash
    $env:MEDAGENT_PORT=8001; python -m app.main
    ```
-4. **换行符问题**：旧提交曾把 `run.bat` 存成 LF 换行，已修复。若你的克隆是旧版本，可重新 `git pull`，或手动用 CRLF 保存 `run.bat` 再运行。
 5. **最稳的启动方式**：命令行进入项目目录后直接运行 `python -m app.main`，再手动打开 <http://127.0.0.1:8000>。
+
+> **历史问题（已修复）**：早期 `run.bat` 同时含 `chcp 65001` 与 UTF-8 中文，会让 cmd.exe 重读脚本时错行，导致 `pip install` 那行被吞掉、报 `No module named 'starlette'`。现已改为**纯 ASCII 启动脚本**。若你克隆的是旧版本，请先 `git pull`（或重新克隆）再运行。
