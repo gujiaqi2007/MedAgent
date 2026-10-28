@@ -138,3 +138,21 @@ python -m PyInstaller --noconfirm --onefile --name MedAgent \
 - 短信/电话通知为模拟，未接入真实运营商。
 - 华为手环等真实设备数据以 `/api/devices/sync` 接口模拟接收。
 - 分诊规则为通用健康教育的演示版本，正式使用前需医学专业人士审核。
+
+---
+
+## 八、无法运行时的排查
+
+双击 `run.bat` 失败，按下面顺序自查（把报错信息发出来能更快定位）：
+
+1. **是否装了 Python**：在命令行执行 `python --version`（或 `py -3 --version`）。没有则到 <https://www.python.org/downloads/> 安装，勾选 **Add python.exe to PATH**。
+2. **依赖是否装成功**：手动执行 `python -m pip install -r requirements.txt`，看是否报网络错误。国内网络慢/失败时改用镜像：
+   ```bash
+   python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+   ```
+3. **端口是否被占用**：启动报 `address already in use` 时，换个端口：
+   ```bash
+   $env:MEDAGENT_PORT=8001; python -m app.main
+   ```
+4. **换行符问题**：旧提交曾把 `run.bat` 存成 LF 换行，已修复。若你的克隆是旧版本，可重新 `git pull`，或手动用 CRLF 保存 `run.bat` 再运行。
+5. **最稳的启动方式**：命令行进入项目目录后直接运行 `python -m app.main`，再手动打开 <http://127.0.0.1:8000>。
