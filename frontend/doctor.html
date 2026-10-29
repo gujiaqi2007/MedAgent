@@ -3,35 +3,62 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>健康守护 · 医生模式</title>
+  <title>医生工作台 · 健康守护</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-  <div class="topbar">
-    <h1>🩺 医生端</h1>
-    <div class="nav">
-      <select id="user-select" style="width:180px"></select>
-      <a href="/">返回首页</a>
-    </div>
-  </div>
-
-  <div class="container">
-    <div class="card">
-      <h2>患者档案</h2>
-      <div id="patient-info" class="small"></div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <h2 style="margin:0">近 7 天健康报告</h2>
-        <button class="btn primary" id="export-btn">导出诊断凭据（FHIR/JSON）</button>
+  <div class="app">
+    <div id="sidebar"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <h1>🩺 医生工作台</h1>
+          <div class="sub">查看连续健康数据，开具与调整医嘱</div>
+        </div>
+        <div class="row">
+          <select id="user-select" style="width:170px"></select>
+          <button class="btn primary" id="export-btn">导出诊断凭据</button>
+        </div>
       </div>
-      <div id="report-body"></div>
-    </div>
 
-    <div class="card">
-      <h2>📈 指标趋势（近 30 天）</h2>
-      <div id="charts"></div>
+      <div class="content">
+        <div class="card">
+          <h2>患者档案</h2>
+          <div id="patient-info" class="small"></div>
+        </div>
+
+        <div class="card">
+          <h2>💊 医嘱管理</h2>
+          <div id="order-list" class="small muted">加载中…</div>
+          <div class="grid-3" style="margin-top:14px">
+            <div><label>医嘱标题</label><input id="ord-title" placeholder="如：降压方案调整"></div>
+            <div><label>药品</label><input id="ord-med" placeholder="如：氨氯地平"></div>
+            <div><label>剂量</label><input id="ord-dosage" placeholder="如：5mg"></div>
+          </div>
+          <div class="grid-3">
+            <div><label>频次</label><input id="ord-freq" placeholder="如：每日一次"></div>
+            <div><label>疗程（天）</label><input id="ord-days" type="number" placeholder="30"></div>
+            <div><label>每日提醒时间</label><input id="ord-cron" value="08:00" placeholder="HH:MM"></div>
+          </div>
+          <label>注意事项</label>
+          <textarea id="ord-note" rows="2" placeholder="如：早餐后服用，注意监测血压"></textarea>
+          <div class="row" style="margin-top:10px">
+            <button class="btn green" id="ord-save">开具医嘱</button>
+            <span class="muted small">开具后会自动加入患者每日提醒</span>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h2>近 7 天报告</h2>
+            <div id="report-body"></div>
+          </div>
+          <div class="card">
+            <h2>📈 指标趋势（近 30 天）</h2>
+            <div id="charts"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

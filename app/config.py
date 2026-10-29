@@ -37,6 +37,12 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
+# 可选 AI 语音（OpenAI 兼容 TTS）；不配置则前端回退浏览器 Web Speech + 本地文本规范化。
+AI_VOICE_API_KEY = os.environ.get("AI_VOICE_API_KEY", "")
+AI_VOICE_BASE_URL = os.environ.get("AI_VOICE_BASE_URL", "https://api.openai.com/v1")
+AI_TTS_MODEL = os.environ.get("AI_TTS_MODEL", "tts-1")
+AI_TTS_VOICE = os.environ.get("AI_TTS_VOICE", "alloy")
+
 # 指标参考区间（通用成人参考，非诊断标准，用于异常高亮）
 METRIC_REFERENCE = {
     "heart_rate": {"label": "心率", "unit": "次/分", "low": 60, "high": 100},

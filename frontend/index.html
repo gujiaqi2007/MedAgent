@@ -3,54 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>健康守护 · 健康检测 Agent</title>
+  <title>健康守护 MedAgent</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-  <div class="container">
-    <div class="hero">
-      <h1>🏥 健康守护 Agent</h1>
-      <p class="muted">面向老年人、慢病患者与家属的主动式健康管理助手</p>
-      <p class="muted small" id="seed-status">正在准备演示数据…</p>
-    </div>
-
-    <div class="role-grid">
-      <div class="role-card" onclick="location.href='/user'">
-        <h2>👴 使用者模式</h2>
-        <p>语音描述不适，获得缓解或就医指引；记录指标；一键紧急呼救。</p>
-      </div>
-      <div class="role-card" onclick="location.href='/guardian'">
-        <h2>👨‍👩‍👧 监护人模式</h2>
-        <p>实时查看身体状况、异常告警、医嘱提醒与周/月报告。</p>
-      </div>
-      <div class="role-card" onclick="location.href='/doctor'">
-        <h2>🩺 医生模式</h2>
-        <p>查看连续健康数据、历史对比、异常标注与可导出凭据。</p>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:24px">
-      <h3>关于本应用</h3>
-      <p class="small muted">
-        本应用为健康管理辅助工具，不构成医疗诊断。危急情况（胸痛、呼吸困难、言语不清、一侧无力等）请立即拨打 120。
-        演示数据已预置：使用者「张奶奶」、监护人「张先生」、医生「李医生」，以及 30 天健康指标。
-      </p>
+  <div class="auth-wrap">
+    <div class="auth-card" style="text-align:center">
+      <h1>✚ 健康守护</h1>
+      <p class="sub">正在进入…</p>
     </div>
   </div>
-
   <script src="/static/js/api.js"></script>
-  <script src="/static/js/common.js"></script>
   <script>
-    (async function init() {
-      const st = document.getElementById('seed-status');
-      try {
-        const r = await API.seed(false);
-        st.textContent = '演示数据已就绪（使用者：张奶奶）';
-        st.style.color = '#16a34a';
-      } catch (e) {
-        st.textContent = '演示数据准备失败：' + e.message;
-        st.style.color = '#dc2626';
-      }
+    (function () {
+      if (!API.token()) { location.replace('/login'); return; }
+      const role = localStorage.getItem('medagent_role');
+      location.replace(role === 'guardian' ? '/guardian' : role === 'doctor' ? '/doctor' : '/user');
     })();
   </script>
 </body>

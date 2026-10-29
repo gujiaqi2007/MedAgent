@@ -11,19 +11,18 @@ from pathlib import Path
 
 _RULES_PATH = Path(__file__).parent / "data" / "triage_rules.json"
 
-# 加载规则（进程启动一次）
 with _RULES_PATH.open("r", encoding="utf-8") as f:
     _RULES = json.load(f)
 
 CONDITIONS = _RULES["conditions"]
 DISCLAIMER = _RULES.get("disclaimer", "")
+SOURCE_NOTE = _RULES.get("source_note", "")
 
-# 级别优先级：红 > 黄 > 绿
 _LEVEL_RANK = {"red": 3, "yellow": 2, "green": 1}
+_DEFAULT_OPTIONS = ["是", "否", "不清楚"]
 
 
 def _normalize(text: str) -> str:
-    """去空白与常见标点，便于关键词匹配。"""
     if not text:
         return ""
     text = re.sub(r"[\s,，。.!！?？、;；:：\"'“”‘’()（）\[\]【】]+", "", text)
@@ -31,7 +30,6 @@ def _normalize(text: str) -> str:
 
 
 def _match_score(text: str, keywords: list[str]) -> int:
-    """返回匹配到的关键词数量（加权：长词命中更可信）。"""
     score = 0
     for kw in keywords:
         if kw and kw in text:
@@ -39,14 +37,18 @@ def _match_score(text: str, keywords: list[str]) -> int:
     return score
 
 
-def triage(user_text: str) -> dict:
-    """对一段用户描述做分诊，返回结构化结论。
+def _norm_followups(items) -> list[dict]:
+    out = []
+    for it in items or []:
+        if isinstance(it, dict):
+            out.append({"q": it.get("q", ""), "options": it.get("options") or _DEFAULT_OPTIONS})
+        else:
+            out.append({"q": str(it), "options": _DEFAULT_OPTIONS})
+    return out
 
-    返回字段：
-      level: red | yellow | green
-      title, name, advice, suggest_120, notify, followups, disclaimer,
-      matched_condition_id, escalated (bool), escalate_note
-    """
+
+def triage(user_text: str) -> dict:
+    """对一段用户描述做分诊，返回结构化结论（含通俗解释、权威来源、追问选项）。"""
     text = _normalize(user_text)
     if not text:
         return _fallback()
@@ -59,7 +61,6 @@ def triage(user_text: str) -> dict:
             best_score = s
             best = cond
         elif s == best_score and best is not None:
-            # 同分取更高级别
             if _LEVEL_RANK.get(cond["level"], 0) > _LEVEL_RANK.get(best["level"], 0):
                 best = cond
 
@@ -70,17 +71,18 @@ def triage(user_text: str) -> dict:
         "level": best["level"],
         "name": best.get("name", ""),
         "title": best.get("title", ""),
+        "plain": best.get("plain", ""),
         "advice": best.get("advice", ""),
+        "source": best.get("source", ""),
         "suggest_120": bool(best.get("suggest_120", False)),
         "notify": best.get("notify", "none"),
-        "followups": best.get("followups", []),
+        "followups": _norm_followups(best.get("followups", [])),
         "disclaimer": DISCLAIMER,
         "matched_condition_id": best.get("id", ""),
         "escalated": False,
         "escalate_note": "",
     }
 
-    # 绿色条件的升级：命中加重关键词 → 升级为黄色
     esc = best.get("escalate")
     if esc and _match_score(text, esc.get("keywords", [])) > 0:
         result["level"] = esc.get("level", "yellow")
@@ -98,10 +100,15 @@ def _fallback() -> dict:
         "level": "green",
         "name": "通用建议",
         "title": "请多留意身体感受",
-        "advice": "感谢您的描述。目前没有识别到明确的危急信号，建议：多休息、注意补充水分、清淡饮食，并继续观察症状变化。若症状持续、加重，或出现胸痛、呼吸困难、言语不清、一侧无力等，请立即拨打 120 或联系监护人。",
+        "plain": "我没太听清您具体哪里不舒服，您可以用一句话说说，比如「膝盖疼」「头晕」「发烧」。",
+        "advice": "先多休息、喝点温水。如果出现胸口疼、喘不上气、说话不清、一边手脚没劲，请马上打 120 或叫家人。",
+        "source": "通用健康提示",
         "suggest_120": False,
         "notify": "none",
-        "followups": ["您目前最主要的不适是什么？", "症状持续多久了？", "是否正在服用相关药物？"],
+        "followups": _norm_followups([
+            {"q": "您最主要是哪里不舒服？", "options": ["膝盖/腿疼", "头晕", "发烧", "肚子疼"]},
+            {"q": "这个不舒服持续多久了？", "options": ["今天", "两三天", "一周以上"]},
+        ]),
         "disclaimer": DISCLAIMER,
         "matched_condition_id": "general",
         "escalated": False,

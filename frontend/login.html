@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · 健康守护 MedAgent</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <h1>✚ 健康守护</h1>
+      <p class="sub">面向老年人、慢病患者与家属的健康管理 Agent</p>
+
+      <div class="tabs">
+        <button id="tab-login" class="on" onclick="switchTab('login')">登录</button>
+        <button id="tab-reg" onclick="switchTab('reg')">注册</button>
+      </div>
+
+      <div id="form-login">
+        <label>账号</label>
+        <input id="username" autocomplete="username" placeholder="请输入账号">
+        <label>密码</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码">
+        <button class="btn primary" style="width:100%;margin-top:16px" onclick="doLogin()">登 录</button>
+      </div>
+
+      <div id="form-reg" style="display:none">
+        <label>账号</label>
+        <input id="r-username" placeholder="自定义账号">
+        <label>密码（至少 6 位）</label>
+        <input id="r-password" type="password" placeholder="设置密码">
+        <label>身份</label>
+        <select id="r-role">
+          <option value="user">使用者</option>
+          <option value="guardian">监护人</option>
+          <option value="doctor">医生</option>
+        </select>
+        <label>显示名称</label>
+        <input id="r-name" placeholder="如：张奶奶">
+        <button class="btn teal" style="width:100%;margin-top:16px" onclick="doRegister()">注 册</button>
+      </div>
+
+      <div class="demo-hint">
+        演示账号（密码均为 <b>123456</b>）：<br>
+        使用者 <b>zhang</b> · 监护人 <b>zhangson</b> · 医生 <b>lidoctor</b>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    function switchTab(t) {
+      document.getElementById('form-login').style.display = t === 'login' ? '' : 'none';
+      document.getElementById('form-reg').style.display = t === 'reg' ? '' : 'none';
+      document.getElementById('tab-login').classList.toggle('on', t === 'login');
+      document.getElementById('tab-reg').classList.toggle('on', t === 'reg');
+    }
+    function goHome(role) {
+      location.href = role === 'guardian' ? '/guardian' : role === 'doctor' ? '/doctor' : '/user';
+    }
+    async function doLogin() {
+      try {
+        const r = await API.login(document.getElementById('username').value.trim(), document.getElementById('password').value);
+        API.setToken(r.token);
+        localStorage.setItem('medagent_role', r.account.role);
+        localStorage.setItem('medagent_name', r.account.display_name || r.account.username);
+        if (r.bindings && r.bindings.length) setCurrentUserId(r.bindings[0].user_id);
+        goHome(r.account.role);
+      } catch (e) { alert(e.message); }
+    }
+    async function doRegister() {
+      try {
+        await API.register(document.getElementById('r-username').value.trim(), document.getElementById('r-password').value,
+          document.getElementById('r-role').value, document.getElementById('r-name').value.trim());
+        alert('注册成功，请登录');
+        switchTab('login');
+      } catch (e) { alert(e.message); }
+    }
+    // 已登录则直接进入
+    if (API.token()) goHome(localStorage.getItem('medagent_role') || 'user');
+  </script>
+</body>
+</html>

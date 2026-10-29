@@ -1,10 +1,20 @@
-/* 医生模式逻辑 */
+/* 医生工作台（含开具医嘱） */
 (function () {
+  if (!requireLogin()) return;
   const userSelect = document.getElementById('user-select');
   const patientInfo = document.getElementById('patient-info');
   const reportBody = document.getElementById('report-body');
   const chartsEl = document.getElementById('charts');
   const exportBtn = document.getElementById('export-btn');
+  const orderList = document.getElementById('order-list');
+  const ordTitle = document.getElementById('ord-title');
+  const ordMed = document.getElementById('ord-med');
+  const ordDosage = document.getElementById('ord-dosage');
+  const ordFreq = document.getElementById('ord-freq');
+  const ordDays = document.getElementById('ord-days');
+  const ordCron = document.getElementById('ord-cron');
+  const ordNote = document.getElementById('ord-note');
+  const ordSave = document.getElementById('ord-save');
 
   const REFS = {
     heart_rate: { label: '心率', unit: '次/分', low: 60, high: 100 },
@@ -19,43 +29,63 @@
 
   async function loadUsers() {
     const r = await API.users();
-    userSelect.innerHTML = r.users.map(u =>
+    const list = r.users.filter(u => u.bound).length ? r.users.filter(u => u.bound) : r.users;
+    userSelect.innerHTML = list.map(u =>
       `<option value="${u.id}" ${u.id === currentUserId() ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
+    if (!list.some(u => u.id === currentUserId()) && list.length) setCurrentUserId(list[0].id);
   }
-  userSelect.onchange = () => setCurrentUserId(userSelect.value);
+  userSelect.onchange = () => { setCurrentUserId(userSelect.value); refresh(); };
 
   async function refresh() {
-    const uid = currentUserId();
-    const d = await API.doctorOverview(uid);
+    const d = await API.doctorOverview(currentUserId());
     const u = d.user || {};
-
     patientInfo.innerHTML = `
       <p style="margin:4px 0"><b>姓名：</b>${esc(u.name)} · ${esc(u.gender || '')} · ${esc(u.birth_date || '')}</p>
       <p style="margin:4px 0"><b>既往病史：</b>${(u.medical_history || []).map(esc).join('、') || '无'}</p>
       <p style="margin:4px 0"><b>过敏史：</b>${(u.allergies || []).map(esc).join('、') || '无'}</p>
       <p style="margin:4px 0"><b>当前用药：</b>${(u.current_medications || []).map(esc).join('、') || '无'}</p>`;
 
+    orderList.innerHTML = d.orders.length
+      ? d.orders.map(o => `<div class="alert-item info" style="margin-bottom:8px">
+          <div><div class="t">${esc(o.title)}</div>
+          <div class="m">${esc([o.medication, o.dosage, o.frequency].filter(Boolean).join(' · '))}${o.instructions ? ' — ' + esc(o.instructions) : ''}</div>
+          <div class="muted small">${esc(o.created_at)} · ${o.status === 'active' ? '执行中' : '已停止'}</div></div>
+          ${o.status === 'active' ? `<button class="btn ghost sm" onclick="window._stop('${o.id}')">停止</button>` : ''}
+        </div>`).join('')
+      : '<div class="muted small">暂无医嘱。</div>';
+
     const rep = d.weekly.summary;
     reportBody.innerHTML = `
-      <p class="muted small">统计周期 ${esc(rep.period_start.slice(0,10))} 至 ${esc(rep.period_end.slice(0,10))} · 指标 ${rep.metric_count} 项 · 异常 ${rep.anomaly_count} 项</p>
-      ${d.weekly.anomalies.length ? `<h3>⚠️ 异常指标</h3><table><tr><th>指标</th><th>最新值</th><th>参考区间</th><th>方向</th></tr>
-        ${d.weekly.anomalies.map(a => `<tr><td>${esc(a.label)}</td><td><b style="color:#dc2626">${a.latest} ${esc(a.unit)}</b></td><td>${esc(a.reference)}</td><td>${a.direction === 'high' ? '偏高' : '偏低'}</td></tr>`).join('')}</table>` : '<p class="small">未发现异常。</p>'}
-      <h3>指标明细</h3>
-      <table><tr><th>指标</th><th>最新</th><th>均值</th><th>范围</th><th>趋势</th></tr>
-        ${Object.keys(rep.metrics).map(t => { const m = rep.metrics[t];
-          const tr = m.trend === '上升' ? '↑ 上升' : m.trend === '下降' ? '↓ 下降' : '→ 平稳';
-          return `<tr><td>${esc(m.label)}</td><td><b>${m.latest}</b> ${esc(m.unit)}</td><td>${m.avg}</td><td>${m.min}–${m.max}</td><td>${tr}</td></tr>`; }).join('')}</table>
-      <h3>💡 生活建议</h3><ul>${d.weekly.advice.map(a => `<li>${esc(a)}</li>`).join('')}</ul>
-      <p class="muted small">本数据为居家健康监测记录，供医生参考，不构成诊断。</p>`;
+      <p class="muted small">${esc(rep.period_start.slice(0, 10))} 至 ${esc(rep.period_end.slice(0, 10))} · 指标 ${rep.metric_count} 项 · 异常 ${rep.anomaly_count} 项</p>
+      ${d.weekly.anomalies.length ? `<table><tr><th>指标</th><th>最新值</th><th>参考</th></tr>
+        ${d.weekly.anomalies.map(a => `<tr><td>${esc(a.label)}</td><td><b style="color:#dc2626">${a.latest} ${esc(a.unit)}</b></td><td>${esc(a.reference)}</td></tr>`).join('')}</table>` : '<p class="small">未发现异常。</p>'}
+      <h3>生活建议</h3><ul class="small">${d.weekly.advice.map(a => `<li>${esc(a)}</li>`).join('')}</ul>
+      <p class="muted small">居家监测数据，供医生参考，不构成诊断。</p>`;
 
     const keys = Object.keys(d.series || {});
     chartsEl.innerHTML = keys.map(t => `<div class="chart" data-metric="${t}"></div>`).join('') || '<div class="muted small">暂无数据</div>';
     chartsEl.querySelectorAll('.chart').forEach(el => {
-      const t = el.dataset.metric;
-      const ref = REFS[t] || {};
+      const t = el.dataset.metric, ref = REFS[t] || {};
       renderLineChart(el, d.series[t], { label: ref.label, unit: ref.unit, referenceLow: ref.low, referenceHigh: ref.high });
     });
   }
+  window._stop = async (id) => { await API.stopOrder(id); toast('医嘱已停止', 'ok'); refresh(); };
+
+  ordSave.onclick = async () => {
+    const title = ordTitle.value.trim();
+    if (!title) { toast('请填写医嘱标题', 'warn'); return; }
+    try {
+      await API.createOrder({
+        user_id: currentUserId(), title,
+        medication: ordMed.value.trim(), dosage: ordDosage.value.trim(),
+        frequency: ordFreq.value.trim(), duration_days: Number(ordDays.value) || null,
+        instructions: ordNote.value.trim(), cron: ordCron.value.trim() || '08:00',
+      });
+      toast('医嘱已开具，并已加入每日提醒', 'ok');
+      ordTitle.value = ordMed.value = ordDosage.value = ordFreq.value = ordDays.value = ordNote.value = '';
+      refresh();
+    } catch (e) { toast('开具失败：' + e.message, 'err'); }
+  };
 
   exportBtn.onclick = async () => {
     try {
@@ -63,15 +93,18 @@
       const blob = new Blob([JSON.stringify(r.export, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `medagent_report_${currentUserId()}_${Date.now()}.json`;
+      a.download = `medagent_${currentUserId()}_${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
-      toast('已导出诊断凭据（JSON）', 'ok');
+      toast('已导出诊断凭据', 'ok');
     } catch (e) { toast('导出失败：' + e.message, 'err'); }
   };
 
   (async function init() {
-    try { await API.seed(false); await loadUsers(); } catch (e) { toast('加载用户失败：' + e.message, 'err'); }
+    try { await loadMe(); } catch (e) {}
+    const role = localStorage.getItem('medagent_role') || 'doctor';
+    renderSidebar(role, 'doctor');
+    try { await loadUsers(); } catch (e) { toast('加载用户失败：' + e.message, 'err'); }
     refresh().catch(e => toast('加载失败：' + e.message, 'err'));
   })();
 })();

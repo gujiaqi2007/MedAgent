@@ -129,6 +129,48 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- ===== 账号体系 =====
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    role TEXT NOT NULL,
+    display_name TEXT,
+    created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    created_at TEXT,
+    expires_at TEXT
+);
+CREATE TABLE IF NOT EXISTS bindings (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    created_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bindings_unique ON bindings(account_id, user_id);
+
+-- ===== 医嘱（医生开具） =====
+CREATE TABLE IF NOT EXISTS orders (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    doctor_id TEXT,
+    title TEXT,
+    medication TEXT,
+    dosage TEXT,
+    frequency TEXT,
+    duration_days INTEGER,
+    instructions TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT,
+    stopped_at TEXT
+);
 """
 
 _conn: sqlite3.Connection | None = None
@@ -152,8 +194,25 @@ def get_conn() -> sqlite3.Connection:
         _conn.execute("PRAGMA journal_mode=WAL;")
         _conn.execute("PRAGMA foreign_keys=ON;")
         _conn.executescript(_SCHEMA)
+        _migrate(_conn)
         _conn.commit()
     return _conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """为已有数据库补充新增列（幂等）。"""
+    def cols(table: str) -> set[str]:
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+    def add(table: str, name: str, decl: str) -> None:
+        if name not in cols(table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+    add("users", "account_id", "TEXT")
+    add("guardians", "account_id", "TEXT")
+    add("doctors", "account_id", "TEXT")
+    add("reminders", "source", "TEXT")
+    add("reminders", "created_by", "TEXT")
 
 
 def query(sql: str, params: tuple = ()) -> list[dict]:

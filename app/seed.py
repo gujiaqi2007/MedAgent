@@ -51,11 +51,36 @@ def _insert_metrics(user_id: str) -> None:
         db.get_conn().commit()
 
 
+def _ensure_demo_accounts() -> dict:
+    """确保演示账号存在并已绑定（幂等）。"""
+    from . import auth
+    demo_accounts = [
+        ("zhang", "123456", "user", "张奶奶"),
+        ("zhangson", "123456", "guardian", "张先生"),
+        ("lidoctor", "123456", "doctor", "李医生"),
+    ]
+    acct = {}
+    for username, pwd, role, disp in demo_accounts:
+        row = db.query_one("SELECT * FROM accounts WHERE username=?", (username,))
+        if not row:
+            row = auth.create_account(username, pwd, role, disp)
+        acct[role] = row
+    auth.bind(acct["user"]["id"], DEMO_USER_ID, "self")
+    auth.bind(acct["guardian"]["id"], DEMO_USER_ID, "guardian")
+    auth.bind(acct["doctor"]["id"], DEMO_USER_ID, "doctor")
+    db.execute("UPDATE users SET account_id=? WHERE id=?", (acct["user"]["id"], DEMO_USER_ID))
+    db.execute("UPDATE guardians SET account_id=? WHERE user_id=?", (acct["guardian"]["id"], DEMO_USER_ID))
+    db.execute("UPDATE doctors SET account_id=? WHERE id=?", (acct["doctor"]["id"], DEMO_DOCTOR_ID))
+    return {"user": "zhang", "guardian": "zhangson", "doctor": "lidoctor"}
+
+
 def seed_demo(force: bool = False) -> dict:
     """创建演示数据，返回演示对象 id。"""
     existing = db.query_one("SELECT id FROM users WHERE id=?", (DEMO_USER_ID,))
     if existing and not force:
-        return {"user_id": DEMO_USER_ID, "guardian_id": DEMO_GUARDIAN_ID, "doctor_id": DEMO_DOCTOR_ID}
+        accts = _ensure_demo_accounts()
+        return {"user_id": DEMO_USER_ID, "guardian_id": DEMO_GUARDIAN_ID,
+                "doctor_id": DEMO_DOCTOR_ID, "accounts": accts}
 
     db.execute(
         "INSERT OR REPLACE INTO users(id,name,gender,birth_date,height_cm,weight_kg,blood_type,"
@@ -89,4 +114,9 @@ def seed_demo(force: bool = False) -> dict:
                         detail="降压药，早餐后服用一片", cron="08:00")
     rem.create_reminder(DEMO_USER_ID, kind="measurement", title="测量血压",
                         detail="测量并记录收缩压/舒张压", cron="09:00")
-    return {"user_id": DEMO_USER_ID, "guardian_id": DEMO_GUARDIAN_ID, "doctor_id": DEMO_DOCTOR_ID}
+
+    accts = _ensure_demo_accounts()
+    return {
+        "user_id": DEMO_USER_ID, "guardian_id": DEMO_GUARDIAN_ID, "doctor_id": DEMO_DOCTOR_ID,
+        "accounts": accts,
+    }

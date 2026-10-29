@@ -3,46 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>健康守护 · 监护人模式</title>
+  <title>监护人看板 · 健康守护</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-  <div class="topbar">
-    <h1>👨‍👩‍👧 监护人端</h1>
-    <div class="nav">
-      <select id="user-select" style="width:180px"></select>
-      <a href="/">返回首页</a>
-    </div>
-  </div>
-
-  <div class="container">
-    <div class="grid-2">
-      <div class="card">
-        <h2>📊 最新身体指标</h2>
-        <div class="metric-grid" id="latest-metrics"></div>
+  <div class="app">
+    <div id="sidebar"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <h1>🛡️ 监护人看板</h1>
+          <div class="sub">实时掌握家人身体状况，安排每日照护</div>
+        </div>
+        <div class="row">
+          <select id="user-select" style="width:170px"></select>
+          <button class="btn ghost" id="gen-weekly">生成周报</button>
+        </div>
       </div>
-      <div class="card">
-        <h2>⏰ 今日待办（医嘱/测量）</h2>
-        <div id="due-list" class="small muted">加载中…</div>
+
+      <div class="content">
+        <div class="grid-2">
+          <div class="card">
+            <h2>📊 最新指标</h2>
+            <div class="metric-grid" id="latest-metrics"></div>
+          </div>
+          <div class="card">
+            <h2>⏰ 今日待办</h2>
+            <div id="due-list" class="small muted">加载中…</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>🚨 告警与通知 <span class="badge red" id="unread-badge" style="display:none"></span></h2>
+          <div id="alert-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>🗓️ 日程管理（服药 / 测量 / 复诊）</h2>
+          <div id="schedule-list" class="small muted">加载中…</div>
+          <div class="grid-3" style="margin-top:14px">
+            <div><label>标题</label><input id="sch-title" placeholder="如：服用降压药"></div>
+            <div><label>详情</label><input id="sch-detail" placeholder="如：早餐后一片"></div>
+            <div><label>每日时间</label><input id="sch-cron" value="08:00" placeholder="HH:MM"></div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <select id="sch-kind" style="width:150px">
+              <option value="medication">服药</option>
+              <option value="measurement">测量</option>
+              <option value="appointment">复诊</option>
+            </select>
+            <button class="btn primary" id="sch-save">保存日程</button>
+            <button class="btn ghost" id="sch-cancel" style="display:none">取消编辑</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>📈 指标趋势（近 30 天）</h2>
+          <div id="charts"></div>
+        </div>
+
+        <div class="card" id="report-card" style="display:none">
+          <h2>📄 健康报告</h2>
+          <div id="report-body"></div>
+        </div>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>🚨 告警与通知 <span class="badge red" id="unread-badge" style="display:none"></span></h2>
-      <div id="alert-list"></div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <h2 style="margin:0">📈 指标趋势（近 30 天）</h2>
-        <button class="btn ghost" id="gen-weekly">生成周报</button>
-      </div>
-      <div id="charts"></div>
-    </div>
-
-    <div class="card" id="report-card" style="display:none">
-      <h2>📄 健康报告</h2>
-      <div id="report-body"></div>
     </div>
   </div>
 
