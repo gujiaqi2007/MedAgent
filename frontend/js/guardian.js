@@ -1,6 +1,6 @@
 /* 监护人看板（含日程管理） */
 (function () {
-  if (!requireLogin()) return;
+  if (!requireRole('guardian')) return;
   const userSelect = document.getElementById('user-select');
   const latestBox = document.getElementById('latest-metrics');
   const dueList = document.getElementById('due-list');
@@ -217,6 +217,7 @@
     try { await loadMe(); } catch (e) {}
     const role = localStorage.getItem('medagent_role') || 'guardian';
     renderSidebar(role, 'guardian');
+    renderHero(role);
     try { await loadUsers(); } catch (e) { toast('加载用户失败：' + e.message, 'err'); }
     refresh().catch(e => toast('加载失败：' + e.message, 'err'));
     setInterval(() => refresh().catch(() => {}), 20000);

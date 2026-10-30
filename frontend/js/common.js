@@ -131,28 +131,64 @@ async function loadMe() {
 }
 
 function logout() {
-  API.logout().catch(() => {}).finally(() => { API.clearToken(); location.href = '/login'; });
+  API.logout().catch(() => {}).finally(() => {
+    API.clearToken();
+    localStorage.removeItem('medagent_role');
+    localStorage.removeItem('medagent_name');
+    location.href = '/login';
+  });
+}
+
+const ROLE_HOME = { user: '/user', guardian: '/guardian', doctor: '/doctor' };
+const ROLE_LABEL = { user: '使用者', guardian: '监护人', doctor: '医生' };
+function roleHome(role) { return ROLE_HOME[role] || '/login'; }
+
+// 角色锁定：登录后只能使用本身份的界面，切换身份需退出登录
+function requireRole(expected) {
+  if (!API.token()) { location.replace('/login'); return false; }
+  const role = localStorage.getItem('medagent_role') || 'user';
+  if (role !== expected) { location.replace(roleHome(role)); return false; }
+  return true;
 }
 
 function renderSidebar(role, active) {
-  const items = [
-    { id: 'user', href: '/user', icon: '💬', label: 'AI 智能导诊', roles: ['user', 'guardian', 'doctor'] },
-    { id: 'guardian', href: '/guardian', icon: '🛡️', label: '监护人看板', roles: ['guardian', 'doctor'] },
-    { id: 'doctor', href: '/doctor', icon: '🩺', label: '医生工作台', roles: ['doctor', 'guardian'] },
-  ];
-  const roleName = { user: '使用者', guardian: '监护人', doctor: '医生' }[role] || '';
+  const navItems = {
+    user: [{ id: 'user', href: '/user', icon: '💬', label: 'AI 智能导诊' }],
+    guardian: [{ id: 'guardian', href: '/guardian', icon: '🛡️', label: '监护人看板' }],
+    doctor: [{ id: 'doctor', href: '/doctor', icon: '🩺', label: '医生工作台' }],
+  };
+  const items = navItems[role] || [];
   const name = localStorage.getItem('medagent_name') || '';
+  const icon = { user: '👴', guardian: '👨‍👩‍👧', doctor: '🩺' }[role] || '👤';
   const el = document.getElementById('sidebar');
   if (!el) return;
   el.innerHTML = `
     <div class="brand"><div class="logo">✚</div>
-      <div><b>健康守护</b><span>MedAgent · ${roleName}</span></div></div>
+      <div><b>健康守护</b><span>MedAgent</span></div></div>
+    <div class="role-chip">${icon} ${ROLE_LABEL[role] || ''}身份</div>
     <nav class="nav">
-      ${items.filter(i => i.roles.includes(role)).map(i =>
-        `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"><span class="ico">${i.icon}</span>${i.label}</a>`).join('')}
+      <div class="nav-title">本系统</div>
+      ${items.map(i => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"><span class="ico">${i.icon}</span>${i.label}</a>`).join('')}
     </nav>
-    <div class="foot">
-      <div style="margin-bottom:6px">${esc(name)}</div>
-      <a href="#" onclick="logout();return false;">退出登录</a>
-    </div>`;
+    <div class="side-user">
+      <div class="name">${esc(name)}</div>
+      <div class="meta">当前身份：${ROLE_LABEL[role] || ''}</div>
+      <button class="logout" onclick="logout()">↩ 退出登录后切换身份</button>
+    </div>
+    <div class="foot">© MedAgent · 非诊断工具</div>`;
+}
+
+function renderHero(role) {
+  const content = document.querySelector('.content');
+  if (!content || content.querySelector('.hero')) return;
+  const name = localStorage.getItem('medagent_name') || '';
+  const conf = {
+    user: { emoji: '🌿', title: `您好，${esc(name)}`, sub: '今天也要照顾好自己，哪里不舒服随时告诉我' },
+    guardian: { emoji: '🛡️', title: `${esc(name)}，欢迎回来`, sub: '实时掌握家人健康状况，安排今日照护' },
+    doctor: { emoji: '🩺', title: `${esc(name)}，欢迎回来`, sub: '优先处理异常患者，查看随访与问诊' },
+  }[role] || { emoji: '👋', title: '欢迎', sub: '' };
+  const hero = document.createElement('div');
+  hero.className = 'hero' + (role === 'doctor' ? ' teal' : '');
+  hero.innerHTML = `<div><h1>${conf.title}</h1><p>${conf.sub}</p></div><div class="big-emoji">${conf.emoji}</div>`;
+  content.insertBefore(hero, content.firstChild);
 }

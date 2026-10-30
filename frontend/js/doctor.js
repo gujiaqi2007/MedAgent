@@ -1,6 +1,6 @@
 /* 医生工作台（含开具医嘱） */
 (function () {
-  if (!requireLogin()) return;
+  if (!requireRole('doctor')) return;
   const userSelect = document.getElementById('user-select');
   const patientInfo = document.getElementById('patient-info');
   const reportBody = document.getElementById('report-body');
@@ -188,6 +188,7 @@
     try { await loadMe(); } catch (e) {}
     const role = localStorage.getItem('medagent_role') || 'doctor';
     renderSidebar(role, 'doctor');
+    renderHero(role);
     try { await loadUsers(); } catch (e) { toast('加载用户失败：' + e.message, 'err'); }
     refresh().catch(e => toast('加载失败：' + e.message, 'err'));
   })();

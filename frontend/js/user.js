@@ -1,6 +1,6 @@
 /* AI 智能导诊（使用者端） */
 (function () {
-  if (!requireLogin()) return;
+  if (!requireRole('user')) return;
   const chatBox = document.getElementById('chat-box');
   const input = document.getElementById('msg-input');
   const sendBtn = document.getElementById('send-btn');
@@ -226,6 +226,7 @@
     try { await loadMe(); } catch (e) {}
     const role = localStorage.getItem('medagent_role') || 'user';
     renderSidebar(role, 'user');
+    renderHero(role);
     const d = document.createElement('div');
     d.className = 'msg ai';
     d.innerHTML = `<div class="avatar">🤖</div><div class="bubble"><div class="plain">您好，我是健康小助手。哪里不舒服，可以直接说，也可以点 🎤 说话。</div></div>`;

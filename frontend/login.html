@@ -8,60 +8,99 @@
 </head>
 <body>
   <div class="auth-wrap">
-    <div class="auth-card">
-      <h1>✚ 健康守护</h1>
-      <p class="sub">面向老年人、慢病患者与家属的健康管理 Agent</p>
+    <div class="auth-shell">
+      <aside class="auth-side">
+        <div>
+          <div class="logo">✚</div>
+          <h1>健康守护</h1>
+          <p>面向老年人、慢病患者与家属的<br>主动式健康管理 Agent</p>
+          <ul class="auth-points">
+            <li>🗣️ 语音问诊，大白话回答</li>
+            <li>📊 指标记录与周/月报</li>
+            <li>🚨 异常告警与紧急呼救</li>
+          </ul>
+        </div>
+        <div style="font-size:12px;opacity:.75;position:relative;z-index:1">
+          本应用为健康管理辅助工具，不构成医疗诊断。
+        </div>
+      </aside>
 
-      <div class="tabs">
-        <button id="tab-login" class="on" onclick="switchTab('login')">登录</button>
-        <button id="tab-reg" onclick="switchTab('reg')">注册</button>
-      </div>
+      <section class="auth-form">
+        <h2>欢迎回来</h2>
+        <p class="sub">请先选择您的身份，再登录</p>
 
-      <div id="form-login">
-        <label>账号</label>
-        <input id="username" autocomplete="username" placeholder="请输入账号">
-        <label>密码</label>
-        <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码">
-        <button class="btn primary" style="width:100%;margin-top:16px" onclick="doLogin()">登 录</button>
-      </div>
+        <div class="role-pick" id="role-pick">
+          <button class="role-option on" data-role="user">👴<span>使用者</span></button>
+          <button class="role-option" data-role="guardian">👨‍👩‍👧<span>监护人</span></button>
+          <button class="role-option" data-role="doctor">🩺<span>医生</span></button>
+        </div>
 
-      <div id="form-reg" style="display:none">
-        <label>账号</label>
-        <input id="r-username" placeholder="自定义账号">
-        <label>密码（至少 6 位）</label>
-        <input id="r-password" type="password" placeholder="设置密码">
-        <label>身份</label>
-        <select id="r-role">
-          <option value="user">使用者</option>
-          <option value="guardian">监护人</option>
-          <option value="doctor">医生</option>
-        </select>
-        <label>显示名称</label>
-        <input id="r-name" placeholder="如：张奶奶">
-        <button class="btn teal" style="width:100%;margin-top:16px" onclick="doRegister()">注 册</button>
-      </div>
+        <div id="form-login">
+          <label>账号</label>
+          <input id="username" autocomplete="username" placeholder="请输入账号">
+          <label>密码</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码">
+          <button class="btn primary lg" style="margin-top:18px" onclick="doLogin()">登 录</button>
+        </div>
 
-      <div class="demo-hint">
-        演示账号（密码均为 <b>123456</b>）：<br>
-        使用者 <b>zhang</b> · 监护人 <b>zhangson</b> · 医生 <b>lidoctor</b>
-      </div>
+        <div id="form-reg" style="display:none">
+          <label>账号</label>
+          <input id="r-username" placeholder="自定义账号">
+          <label>密码（至少 6 位）</label>
+          <input id="r-password" type="password" placeholder="设置密码">
+          <label>显示名称</label>
+          <input id="r-name" placeholder="如：张奶奶">
+          <button class="btn teal lg" style="margin-top:18px" onclick="doRegister()">注 册</button>
+        </div>
+
+        <div class="demo-hint" id="demo-hint"></div>
+
+        <div class="link-line" id="toggle-line">
+          还没有账号？<a href="#" onclick="toggleMode();return false;">立即注册</a>
+        </div>
+      </section>
     </div>
   </div>
 
   <script src="/static/js/api.js"></script>
   <script>
-    function switchTab(t) {
-      document.getElementById('form-login').style.display = t === 'login' ? '' : 'none';
-      document.getElementById('form-reg').style.display = t === 'reg' ? '' : 'none';
-      document.getElementById('tab-login').classList.toggle('on', t === 'login');
-      document.getElementById('tab-reg').classList.toggle('on', t === 'reg');
+    const DEMO = { user: 'zhang', guardian: 'zhangson', doctor: 'lidoctor' };
+    const ROLE_LABEL = { user: '使用者', guardian: '监护人', doctor: '医生' };
+    let role = 'user';
+    let mode = 'login';
+
+    function pickRole(r) {
+      role = r;
+      document.querySelectorAll('.role-option').forEach(el => el.classList.toggle('on', el.dataset.role === r));
+      const d = DEMO[r];
+      document.getElementById('demo-hint').innerHTML =
+        `演示账号：<b>${d}</b> / <b>123456</b> · <a href="#" onclick="fillDemo();return false;">一键填入</a>`;
     }
-    function goHome(role) {
-      location.href = role === 'guardian' ? '/guardian' : role === 'doctor' ? '/doctor' : '/user';
+    function fillDemo() {
+      document.getElementById('username').value = DEMO[role];
+      document.getElementById('password').value = '123456';
+    }
+    function toggleMode() {
+      mode = mode === 'login' ? 'reg' : 'login';
+      document.getElementById('form-login').style.display = mode === 'login' ? '' : 'none';
+      document.getElementById('form-reg').style.display = mode === 'reg' ? '' : 'none';
+      document.getElementById('toggle-line').innerHTML = mode === 'login'
+        ? '还没有账号？<a href="#" onclick="toggleMode();return false;">立即注册</a>'
+        : '已有账号？<a href="#" onclick="toggleMode();return false;">返回登录</a>';
+    }
+    function goHome(r) {
+      location.replace(r === 'guardian' ? '/guardian' : r === 'doctor' ? '/doctor' : '/user');
     }
     async function doLogin() {
+      const u = document.getElementById('username').value.trim();
+      const p = document.getElementById('password').value;
+      if (!u || !p) { alert('请输入账号和密码'); return; }
       try {
-        const r = await API.login(document.getElementById('username').value.trim(), document.getElementById('password').value);
+        const r = await API.login(u, p);
+        if (r.account.role !== role) {
+          alert(`该账号的身份是「${ROLE_LABEL[r.account.role] || r.account.role}」，请先选择对应身份再登录。`);
+          return;
+        }
         API.setToken(r.token);
         localStorage.setItem('medagent_role', r.account.role);
         localStorage.setItem('medagent_name', r.account.display_name || r.account.username);
@@ -70,14 +109,20 @@
       } catch (e) { alert(e.message); }
     }
     async function doRegister() {
+      const u = document.getElementById('r-username').value.trim();
+      const p = document.getElementById('r-password').value;
+      const n = document.getElementById('r-name').value.trim();
+      if (!u || !p) { alert('请填写账号和密码'); return; }
       try {
-        await API.register(document.getElementById('r-username').value.trim(), document.getElementById('r-password').value,
-          document.getElementById('r-role').value, document.getElementById('r-name').value.trim());
+        await API.register(u, p, role, n || u);
         alert('注册成功，请登录');
-        switchTab('login');
+        toggleMode();
+        document.getElementById('username').value = u;
       } catch (e) { alert(e.message); }
     }
-    // 已登录则直接进入
+    document.querySelectorAll('.role-option').forEach(el => el.onclick = () => pickRole(el.dataset.role));
+    pickRole('user');
+    // 已登录直接进入对应系统
     if (API.token()) goHome(localStorage.getItem('medagent_role') || 'user');
   </script>
 </body>
