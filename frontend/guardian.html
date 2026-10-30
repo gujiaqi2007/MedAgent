@@ -58,6 +58,45 @@
         </div>
 
         <div class="card">
+          <h2>🩺 异常解读</h2>
+          <div id="insights" class="small muted">加载中…</div>
+        </div>
+
+        <div class="card">
+          <h2>📝 代录指标（家属代填）</h2>
+          <div class="row">
+            <select id="g-metric-type" style="flex:2">
+              <option value="blood_pressure_sys">收缩压</option>
+              <option value="blood_pressure_dia">舒张压</option>
+              <option value="blood_glucose">空腹血糖</option>
+              <option value="temperature">体温</option>
+              <option value="weight">体重</option>
+              <option value="heart_rate">心率</option>
+            </select>
+            <input id="g-metric-value" type="number" placeholder="数值" style="flex:1">
+            <button class="btn green" id="g-save-metric">代录</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>🧾 护理任务清单</h2>
+          <div id="care-task-list" class="small muted">加载中…</div>
+          <div class="row" style="margin-top:12px">
+            <input id="task-title" placeholder="任务，如：晚上翻身" style="flex:2">
+            <input id="task-detail" placeholder="备注（可选）" style="flex:2">
+            <button class="btn primary" id="task-add">添加任务</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>🔗 绑定家人</h2>
+          <div class="row">
+            <input id="bind-user-id" placeholder="输入使用者 ID（如 u_demo_zhang）" style="flex:3">
+            <button class="btn ghost" id="bind-btn">绑定</button>
+          </div>
+        </div>
+
+        <div class="card">
           <h2>📈 指标趋势（近 30 天）</h2>
           <div id="charts"></div>
         </div>

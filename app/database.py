@@ -171,6 +171,67 @@ CREATE TABLE IF NOT EXISTS orders (
     created_at TEXT,
     stopped_at TEXT
 );
+
+-- ===== 产品功能扩展 =====
+CREATE TABLE IF NOT EXISTS care_tasks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT,
+    detail TEXT,
+    assignee TEXT,
+    status TEXT DEFAULT 'todo',
+    due_date TEXT,
+    created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS consultations (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    account_id TEXT,
+    doctor_account_id TEXT,
+    subject TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT,
+    updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS consultation_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    consultation_id TEXT NOT NULL,
+    role TEXT,
+    text TEXT,
+    created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS followups (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    doctor_account_id TEXT,
+    title TEXT,
+    plan TEXT,
+    next_date TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS signings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    doctor_account_id TEXT,
+    status TEXT DEFAULT 'active',
+    signed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS plan_applications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    plan_id TEXT,
+    applied_at TEXT
+);
+CREATE TABLE IF NOT EXISTS assessments (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT,
+    score INTEGER,
+    level TEXT,
+    advice TEXT,
+    created_at TEXT
+);
 """
 
 _conn: sqlite3.Connection | None = None
@@ -213,6 +274,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     add("doctors", "account_id", "TEXT")
     add("reminders", "source", "TEXT")
     add("reminders", "created_by", "TEXT")
+    add("devices", "device_type", "TEXT")
 
 
 def query(sql: str, params: tuple = ()) -> list[dict]:

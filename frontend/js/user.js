@@ -96,9 +96,11 @@
     if (recognizing) return;
     recognizing = true;
     micBtn.classList.add('rec');
+    const lang = (document.getElementById('dialect') || {}).value || 'zh-CN';
     Speech.startRecognition(
       (txt) => { input.value = txt; },
-      () => { recognizing = false; micBtn.classList.remove('rec'); if (input.value.trim()) send(input.value); }
+      () => { recognizing = false; micBtn.classList.remove('rec'); if (input.value.trim()) send(input.value); },
+      lang
     );
   };
 
@@ -146,6 +148,80 @@
     } catch (e) { toast('同步失败：' + e.message, 'err'); }
   };
 
+  /* ---------- 康复指导 ---------- */
+  async function loadRehab() {
+    try {
+      const r = await API.get('/api/rehab?user_id=' + currentUserId());
+      const box = document.getElementById('rehab-list');
+      box.innerHTML = r.items.map(it => `
+        <div class="alert-item info" style="margin-bottom:8px">
+          <div><div class="t">${esc(it.name)} <span class="muted small">${esc(it.duration)}</span></div>
+          <div class="m">${it.steps.map(s => '• ' + esc(s)).join('<br>')}</div></div>
+        </div>`).join('') || '<div class="muted small">暂无推荐。</div>';
+    } catch (e) { document.getElementById('rehab-list').textContent = '加载失败'; }
+  }
+
+  /* ---------- 图文问诊 ---------- */
+  async function loadConsult() {
+    try {
+      const r = await API.get('/api/consultations?user_id=' + currentUserId());
+      const box = document.getElementById('consult-box');
+      box.innerHTML = r.consultations.length
+        ? r.consultations.map(c => `<div class="alert-item info" style="margin-bottom:8px">
+            <div><div class="t">${esc(c.subject)}</div><div class="m">${c.status === 'replied' ? '医生已回复' : c.status === 'closed' ? '已关闭' : '待医生回复'} · ${esc(c.created_at)}</div></div>
+            <button class="btn ghost sm" onclick="window._openMyConsult('${c.id}')">查看</button></div>`).join('')
+        : '<div class="muted small">暂无问诊，可在下方发起。</div>';
+    } catch (e) { document.getElementById('consult-box').textContent = '加载失败'; }
+  }
+  window._openMyConsult = async (id) => {
+    const r = await API.get('/api/consultations/' + id);
+    document.getElementById('consult-box').innerHTML = `
+      <div class="chat-box" style="height:220px;overflow:auto">
+        ${r.messages.map(m => `<div class="msg ${m.role === 'doctor' ? 'ai' : 'me'}"><div class="avatar">${m.role === 'doctor' ? '🩺' : '🙂'}</div><div class="bubble">${esc(m.text)}</div></div>`).join('')}
+      </div>
+      <button class="btn ghost sm" onclick="window._backConsult()">返回列表</button>`;
+  };
+  window._backConsult = () => loadConsult();
+  document.getElementById('consult-send').onclick = async () => {
+    const msg = document.getElementById('consult-msg').value.trim();
+    if (!msg) return;
+    try {
+      await API.post('/api/consultations', { user_id: currentUserId(), subject: '健康咨询', message: msg });
+      toast('已发起问诊，等待医生回复', 'ok');
+      document.getElementById('consult-msg').value = '';
+      loadConsult();
+    } catch (e) { toast('发起失败：' + e.message, 'err'); }
+  };
+
+  /* ---------- 心理筛查 ---------- */
+  async function renderDepression() {
+    const box = document.getElementById('depression-box');
+    try {
+      const r = await API.get('/api/assessments/depression/questions');
+      box.innerHTML = r.questions.map((q, i) => `
+        <div style="margin:8px 0">
+          <div class="small" style="margin-bottom:6px">${i + 1}. ${esc(q.text)}</div>
+          <div class="row" style="gap:16px">
+            ${['没有', '几天', '一半以上时间', '几乎每天'].map((o, v) =>
+              `<label style="display:inline-flex;gap:4px;align-items:center;margin:0;font-size:13px">
+                <input type="radio" name="dep${i}" value="${v}" style="width:auto">${o}</label>`).join('')}
+          </div>
+        </div>`).join('')
+        + `<button class="btn primary" id="dep-submit">提交评估</button><div id="dep-result" class="small" style="margin-top:8px"></div>`;
+      document.getElementById('dep-submit').onclick = async () => {
+        const answers = [0, 1].map(i => {
+          const el = document.querySelector(`input[name="dep${i}"]:checked`);
+          return el ? Number(el.value) : 0;
+        });
+        try {
+          const res = await API.post('/api/assessments/depression', { user_id: currentUserId(), answers });
+          document.getElementById('dep-result').innerHTML = `<b>${res.result.score} 分（${res.result.level}）</b>：${esc(res.result.advice)}`;
+          Speech.speak('心理筛查结果：' + res.result.advice);
+        } catch (e) { toast('提交失败：' + e.message, 'err'); }
+      };
+    } catch (e) { box.textContent = '加载失败'; }
+  }
+
   (async function init() {
     try { await loadMe(); } catch (e) {}
     const role = localStorage.getItem('medagent_role') || 'user';
@@ -155,5 +231,8 @@
     d.innerHTML = `<div class="avatar">🤖</div><div class="bubble"><div class="plain">您好，我是健康小助手。哪里不舒服，可以直接说，也可以点 🎤 说话。</div></div>`;
     chatBox.appendChild(d);
     loadDue();
+    loadRehab();
+    loadConsult();
+    renderDepression();
   })();
 })();

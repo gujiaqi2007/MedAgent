@@ -17,6 +17,8 @@
   const schKind = document.getElementById('sch-kind');
   const schSave = document.getElementById('sch-save');
   const schCancel = document.getElementById('sch-cancel');
+  const insightsEl = document.getElementById('insights');
+  const careTaskList = document.getElementById('care-task-list');
 
   let editingId = null;
   let allReminders = [];
@@ -73,8 +75,76 @@
     });
 
     await loadSchedule(uid);
+    await loadExtras(uid);
   }
   window._ack = async (id) => { await API.ackAlert(id); toast('已确认', 'ok'); refresh(); };
+
+  async function loadExtras(uid) {
+    try {
+      const ai = await API.get('/api/anomaly-insights?user_id=' + uid);
+      insightsEl.innerHTML = ai.insights.length
+        ? ai.insights.map(x => `<div class="alert-item ${x.direction === 'high' ? 'red' : 'yellow'}" style="margin-bottom:8px">
+            <div><div class="t">${esc(x.label)} ${x.value} ${esc(x.unit)}（参考 ${esc(x.reference)}）</div>
+            <div class="m">可能原因：${esc(x.cause)}</div>
+            <div class="m">现在该做：${esc(x.action)}</div></div></div>`).join('')
+        : '<div class="muted small">各项指标均在参考范围内。</div>';
+    } catch (e) { insightsEl.textContent = '加载失败'; }
+    try {
+      const ct = await API.get('/api/care-tasks?user_id=' + uid);
+      const todo = ct.tasks.filter(t => t.status !== 'done');
+      const done = ct.tasks.filter(t => t.status === 'done');
+      careTaskList.innerHTML = (todo.length
+        ? todo.map(t => `<div class="alert-item info" style="margin-bottom:8px">
+            <div><div class="t">${esc(t.title)}</div><div class="m">${esc(t.detail || '')}${t.assignee ? ' · ' + esc(t.assignee) : ''}</div></div>
+            <div class="row" style="flex-wrap:nowrap">
+              <button class="btn green sm" onclick="window._doneTask('${t.id}')">完成</button>
+              <button class="btn ghost sm" onclick="window._delTask('${t.id}')">删除</button>
+            </div></div>`).join('')
+        : '<div class="muted small">暂无待办任务。</div>')
+        + (done.length ? `<div class="muted small" style="margin-top:6px">已完成 ${done.length} 项</div>` : '');
+    } catch (e) { careTaskList.textContent = '加载失败'; }
+  }
+  window._doneTask = async (id) => { await API.post('/api/care-tasks/' + id + '/done'); toast('已完成', 'ok'); loadExtras(currentUserId()); };
+  window._delTask = async (id) => { await API.del('/api/care-tasks/' + id); toast('已删除', 'ok'); loadExtras(currentUserId()); };
+
+  document.getElementById('g-save-metric').onclick = async () => {
+    const type = document.getElementById('g-metric-type').value;
+    const value = parseFloat(document.getElementById('g-metric-value').value);
+    if (isNaN(value)) { toast('请输入数值', 'warn'); return; }
+    try {
+      await API.addMetric({ user_id: currentUserId(), metrics: [{ type, value, source: 'manual' }] });
+      document.getElementById('g-metric-value').value = '';
+      toast('已代录', 'ok');
+      refresh();
+    } catch (e) { toast('代录失败：' + e.message, 'err'); }
+  };
+
+  document.getElementById('task-add').onclick = async () => {
+    const title = document.getElementById('task-title').value.trim();
+    if (!title) { toast('请填写任务', 'warn'); return; }
+    try {
+      await API.post('/api/care-tasks', {
+        user_id: currentUserId(), title,
+        detail: document.getElementById('task-detail').value.trim(),
+        assignee: localStorage.getItem('medagent_name') || '',
+      });
+      toast('已添加', 'ok');
+      document.getElementById('task-title').value = '';
+      document.getElementById('task-detail').value = '';
+      loadExtras(currentUserId());
+    } catch (e) { toast('添加失败：' + e.message, 'err'); }
+  };
+
+  document.getElementById('bind-btn').onclick = async () => {
+    const uid = document.getElementById('bind-user-id').value.trim();
+    if (!uid) return;
+    try {
+      await API.bind(uid);
+      toast('绑定成功', 'ok');
+      await loadUsers();
+      refresh();
+    } catch (e) { toast('绑定失败：' + e.message, 'err'); }
+  };
 
   async function loadSchedule(uid) {
     const r = await API.reminders(uid);

@@ -25,6 +25,7 @@ from . import reports
 from . import seed as seed_mod
 from . import triage
 from . import voice
+from .api_features import feature_routes
 
 
 # ---------- 工具 ----------
@@ -651,6 +652,8 @@ routes = [
     Route("/guardian", lambda _: _html("guardian.html")),
     Route("/doctor", lambda _: _html("doctor.html")),
 ]
+
+routes += [Route(path, handler, methods=methods) for path, handler, methods in feature_routes]
 
 app = Starlette(debug=False, routes=routes)
 app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")

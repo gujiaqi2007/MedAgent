@@ -24,6 +24,11 @@
           <div class="chat-input">
             <button class="mic" id="mic-btn" title="点击说话">🎤</button>
             <input id="msg-input" placeholder="例如：膝盖疼，一走路就痛">
+            <select id="dialect" style="width:110px;padding:10px;font-size:13px">
+              <option value="zh-CN">普通话</option>
+              <option value="yue-Hant-HK">粤语</option>
+              <option value="zh-TW">台湾国语</option>
+            </select>
             <button class="btn primary" id="send-btn">发送</button>
           </div>
           <div class="muted small" style="margin-top:8px">
@@ -58,6 +63,26 @@
             <h2>💊 今日提醒</h2>
             <div id="due-list" class="small muted">加载中…</div>
           </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h2>🧘 康复指导</h2>
+            <div id="rehab-list" class="small muted">加载中…</div>
+          </div>
+          <div class="card">
+            <h2>💬 图文问诊</h2>
+            <div id="consult-box" class="small muted">加载中…</div>
+            <div class="row" style="margin-top:10px">
+              <input id="consult-msg" placeholder="描述您的疑问" style="flex:1">
+              <button class="btn primary" id="consult-send">发起问诊</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>🧠 心理关怀（近两周情绪小测）</h2>
+          <div id="depression-box"></div>
         </div>
       </div>
     </div>

@@ -70,11 +70,11 @@ let _aiVoiceState = 0; // 0 未知, 1 可用, -1 不可用
 const Speech = {
   supported: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
 
-  startRecognition(onResult, onEnd) {
+  startRecognition(onResult, onEnd, lang) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast('当前浏览器不支持语音识别，请用 Chrome/Edge', 'warn'); if (onEnd) onEnd(); return null; }
     const rec = new SR();
-    rec.lang = 'zh-CN'; rec.interimResults = true; rec.continuous = false;
+    rec.lang = lang || 'zh-CN'; rec.interimResults = true; rec.continuous = false;
     rec.onresult = (e) => {
       let txt = '';
       for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
