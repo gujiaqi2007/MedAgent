@@ -5,6 +5,16 @@ import os
 import sys
 from pathlib import Path
 
+# 自动加载项目根目录下的 .env 文件（可选，未安装 python-dotenv 时静默跳过）
+try:  # noqa: SIM105
+    from dotenv import load_dotenv
+
+    _env_file = Path(__file__).resolve().parent.parent / ".env"
+    if _env_file.exists():
+        load_dotenv(dotenv_path=_env_file, override=False)
+except ImportError:
+    pass
+
 # 是否由 PyInstaller 打包（frozen）
 _FROZEN = bool(getattr(sys, "frozen", False))
 

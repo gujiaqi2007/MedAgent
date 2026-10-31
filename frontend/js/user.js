@@ -45,7 +45,7 @@
     try {
       const r = await API.chat(currentUserId(), msg, sessionId);
       sessionId = r.session_id;
-      addBubble('agent', esc(r.advice), r.triage_level);
+      addBubble('agent', renderMarkdown(r.advice), r.triage_level);
       setChips(r.followups || []);
       if (voiceOut.checked) Speech.speak(r.title + '。' + r.advice);
       if (r.suggest_120) toast('已建议拨打 120，请尽快处理', 'err');

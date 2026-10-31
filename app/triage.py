@@ -107,3 +107,16 @@ def _fallback() -> dict:
         "escalated": False,
         "escalate_note": "",
     }
+
+
+def triage_with_llm(user_text: str, user_context: dict | None = None) -> dict:
+    """规则引擎兜底 + LLM 增强表达的分诊入口。
+
+    先由规则引擎确定风险级别与动作，再尝试用 LLM 生成更自然、更共情的回答。
+    若 LLM 不可用或失败，自动 fallback 到规则引擎结果，保证服务可用。
+    """
+    rule_result = triage(user_text)
+    # 延迟导入，避免循环依赖
+    from . import llm as _llm
+    enhanced = _llm.call_llm(user_text, rule_result, user_context)
+    return enhanced if enhanced is not None else rule_result

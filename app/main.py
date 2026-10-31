@@ -213,7 +213,18 @@ async def chat(request: Request) -> Response:
     transcript.append({"role": "user", "text": message})
     # 分诊基于本段消息 + 会话历史（合并上下文更稳）
     full_text = " ".join(t["text"] for t in transcript if t["role"] == "user")
-    result = triage.triage(full_text)
+
+    # 组装用户上下文，供 LLM 生成个性化建议
+    user = db.query_one("SELECT name, gender, birth_date, medical_history, allergies, current_medications FROM users WHERE id=?", (user_id,))
+    user_context = {
+        "name": user["name"] if user else None,
+        "gender": user["gender"] if user else None,
+        "age": user["birth_date"] if user else None,
+        "medical_history": db.loads(user.get("medical_history"), []) if user else [],
+        "allergies": db.loads(user.get("allergies"), []) if user else [],
+        "current_medications": db.loads(user.get("current_medications"), []) if user else [],
+    }
+    result = triage.triage_with_llm(full_text, user_context)
 
     transcript.append({"role": "agent", "text": result["advice"]})
     notified = 0

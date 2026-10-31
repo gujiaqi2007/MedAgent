@@ -26,6 +26,25 @@ function levelBadge(level) {
   return map[level] || '<span class="badge gray">—</span>';
 }
 
+// 轻量 Markdown → HTML（仅支持常见格式，输出已做 HTML 转义）
+function renderMarkdown(text) {
+  if (!text) return '';
+  return text
+    // 先转义 HTML 特殊字符
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // 再处理 Markdown 标记
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*([^*]|$)/g, '$1<em>$2</em>$3')
+    .replace(/`{1,3}([^`]*?)`{1,3}/g, '<code>$1</code>')
+    .replace(/^#{1,6}\s*(.*)$/gim, '<strong>$1</strong>')
+    .replace(/^[-*+]\s+(.*)$/gim, '• $1')
+    // 换行
+    .replace(/\n/g, '<br>');
+}
+
 // 语音：浏览器 Web Speech API（ASR + TTS）
 const Speech = {
   supported: !!(window.SpeechRecognition || window.webkitSpeechRecognition) || !!window.speechSynthesis,
