@@ -30,6 +30,47 @@ function levelBadge(level) {
   return map[level] || '<span class="badge gray">—</span>';
 }
 
+/* 轻量 Markdown → HTML（先转义再处理，避免 XSS） */
+function renderMarkdown(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*([^*]|$)/g, '$1<em>$2</em>$3')
+    .replace(/`{1,3}([^`]*?)`{1,3}/g, '<code>$1</code>')
+    .replace(/^#{1,6}\s*(.*)$/gim, '<strong>$1</strong>')
+    .replace(/^[-*+]\s+(.*)$/gim, '• $1')
+    .replace(/\n/g, '<br>');
+}
+
+/* 侧边栏页面导航：平滑滚动到对应区块 */
+function scrollToSec(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelectorAll('.nav a[data-sec]').forEach(a => a.classList.toggle('active', a.dataset.sec === id));
+}
+
+/* 给页面卡片打上区块 id（供侧边栏跳转） */
+function tagSections(role) {
+  const map = {
+    user: { '记录身体指标': 'sec-metrics', '今日提醒': 'sec-tasks', '康复指导': 'sec-rehab', '图文问诊': 'sec-consult', '心理关怀': 'sec-mind' },
+    guardian: { '最新指标': 'sec-overview', '异常解读': 'sec-insight', '日程管理': 'sec-schedule', '护理任务': 'sec-care', '绑定家人': 'sec-bind', '指标趋势': 'sec-report' },
+    doctor: { '患者列表': 'sec-patient', '医嘱管理': 'sec-order', '随访与签约': 'sec-followup', '图文问诊': 'sec-consult', '近 7 天报告': 'sec-report' },
+  }[role] || {};
+  document.querySelectorAll('.content .card').forEach(card => {
+    const h2 = card.querySelector('h2');
+    if (!h2) return;
+    for (const k in map) {
+      if (h2.textContent.includes(k)) { if (!card.id) card.id = map[k]; break; }
+    }
+  });
+  if (role === 'user') {
+    const chatCard = document.querySelector('#chat-box') && document.querySelector('#chat-box').closest('.card');
+    if (chatCard && !chatCard.id) chatCard.id = 'sec-chat';
+  }
+}
+
 /* ---------- 语音：数字规范化（修复 120 念成一百二十） ---------- */
 const _CN = '零一二三四五六七八九';
 function numToCn(n) {
@@ -151,6 +192,32 @@ function requireRole(expected) {
   return true;
 }
 
+const SECTIONS = {
+  user: [
+    ['sec-chat', '💬', 'AI 智能导诊'],
+    ['sec-metrics', '📝', '记录指标'],
+    ['sec-tasks', '💊', '今日提醒'],
+    ['sec-rehab', '🧘', '康复指导'],
+    ['sec-consult', '💬', '图文问诊'],
+    ['sec-mind', '🧠', '心理关怀'],
+  ],
+  guardian: [
+    ['sec-overview', '📊', '最新指标'],
+    ['sec-insight', '🩺', '异常解读'],
+    ['sec-schedule', '🗓️', '日程管理'],
+    ['sec-care', '🧾', '护理任务'],
+    ['sec-bind', '🔗', '绑定家人'],
+    ['sec-report', '📈', '趋势报告'],
+  ],
+  doctor: [
+    ['sec-patient', '👥', '患者列表'],
+    ['sec-order', '💊', '医嘱管理'],
+    ['sec-followup', '📅', '随访签约'],
+    ['sec-consult', '💬', '图文问诊'],
+    ['sec-report', '📈', '趋势报告'],
+  ],
+};
+
 function renderSidebar(role, active) {
   const navItems = {
     user: [{ id: 'user', href: '/user', icon: '💬', label: 'AI 智能导诊' }],
@@ -158,6 +225,7 @@ function renderSidebar(role, active) {
     doctor: [{ id: 'doctor', href: '/doctor', icon: '🩺', label: '医生工作台' }],
   };
   const items = navItems[role] || [];
+  const sections = SECTIONS[role] || [];
   const name = localStorage.getItem('medagent_name') || '';
   const icon = { user: '👴', guardian: '👨‍👩‍👧', doctor: '🩺' }[role] || '👤';
   const el = document.getElementById('sidebar');
@@ -167,8 +235,10 @@ function renderSidebar(role, active) {
       <div><b>健康守护</b><span>MedAgent</span></div></div>
     <div class="role-chip">${icon} ${ROLE_LABEL[role] || ''}身份</div>
     <nav class="nav">
-      <div class="nav-title">本系统</div>
+      <div class="nav-title">工作区</div>
       ${items.map(i => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"><span class="ico">${i.icon}</span>${i.label}</a>`).join('')}
+      <div class="nav-title">页面导航</div>
+      ${sections.map(([id, ic, label]) => `<a href="javascript:void(0)" data-sec="${id}" onclick="scrollToSec('${id}');return false;"><span class="ico">${ic}</span>${label}</a>`).join('')}
     </nav>
     <div class="side-user">
       <div class="name">${esc(name)}</div>

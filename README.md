@@ -135,10 +135,29 @@ python -m PyInstaller --noconfirm --onefile --name MedAgent \
 ## 六、技术说明与设计边界
 
 - **存储**：SQLite（单文件、零部署）。baseline 中的 PostgreSQL+TimescaleDB 用于多机构部署时再平滑替换（表结构一致）。
-- **分诊安全**：LLM 负责「理解与表达」，**规则引擎负责风险判定与动作**，避免幻觉直接触发告警。分诊规则见 `app/data/triage_rules.json`，应由医学专业人士审核与版本化。
+- **分诊安全**：LLM 负责「理解与表达」，**规则引擎负责风险判定与动作**，避免幻觉直接触发告警。分诊规则见 `app/data/triage_rules.json` 与 `app/data/triage_rules_extra.json`（共 26 条，含权威指南引用），应由医学专业人士审核与版本化。
 - **通知渠道**：MVP 阶段站内告警为事实来源，短信/电话渠道为接入点（见 `app/alerts.py` 的 `_dispatch`），需接入第三方服务。
 - **设备接入**：`/api/devices/sync` 为统一入口，华为 Health Kit 等通过该接口对接。
-- **可选 LLM 增强**：设置环境变量 `DEEPSEEK_API_KEY` 可启用（预留，见 `app/config.py`）；不配置则纯规则、完全离线可用。
+
+---
+
+## 六·补、接入 AI（LLM）
+
+AI 是**可选增强**：只优化回答措辞，风险级别、是否拨打 120、是否通知监护人始终由**本地规则库**决定——两者冲突时以本地规则为准（见 `app/llm.py` 的 `_merge`）。
+
+**在哪里填写 API（二选一）：**
+
+1. **推荐**：在项目根目录新建 `.env`（可直接复制 `.env.example`），填入：
+   ```ini
+   DEEPSEEK_API_KEY=sk-你的key
+   DEEPSEEK_BASE_URL=https://api.deepseek.com
+   DEEPSEEK_MODEL=deepseek-chat
+   ```
+2. 或直接修改 **`app/config.py`** 中 `DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL / DEEPSEEK_MODEL` 三段。
+
+支持任意 OpenAI 兼容服务（如 SiliconFlow：`https://api.siliconflow.cn/v1`，模型 `Qwen/Qwen2.5-7B-Instruct`）。
+未填写 Key 时完全离线运行；填写后启动即自动启用，页面提示「当前模式：AI 增强」。
+可用 `GET /api/ai/status` 查看当前是否启用。
 
 ---
 

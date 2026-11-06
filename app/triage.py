@@ -9,10 +9,24 @@ import json
 import re
 from pathlib import Path
 
-_RULES_PATH = Path(__file__).parent / "data" / "triage_rules.json"
+_DATA_DIR = Path(__file__).parent / "data"
 
-with _RULES_PATH.open("r", encoding="utf-8") as f:
+with (_DATA_DIR / "triage_rules.json").open("r", encoding="utf-8") as f:
     _RULES = json.load(f)
+
+# 追加扩展规则（本地规则库 v2.1）
+_extra_path = _DATA_DIR / "triage_rules_extra.json"
+if _extra_path.exists():
+    with _extra_path.open("r", encoding="utf-8") as f:
+        _RULES["conditions"] = _RULES["conditions"] + json.load(f).get("conditions", [])
+
+# 合并权威文献引用
+_ref_path = _DATA_DIR / "references.json"
+if _ref_path.exists():
+    with _ref_path.open("r", encoding="utf-8") as f:
+        _REFS = json.load(f)
+    for _c in _RULES["conditions"]:
+        _c.setdefault("references", _REFS.get(_c.get("id", ""), []))
 
 CONDITIONS = _RULES["conditions"]
 DISCLAIMER = _RULES.get("disclaimer", "")
@@ -74,6 +88,7 @@ def triage(user_text: str) -> dict:
         "plain": best.get("plain", ""),
         "advice": best.get("advice", ""),
         "source": best.get("source", ""),
+        "references": best.get("references", []),
         "suggest_120": bool(best.get("suggest_120", False)),
         "notify": best.get("notify", "none"),
         "followups": _norm_followups(best.get("followups", [])),
@@ -114,3 +129,19 @@ def _fallback() -> dict:
         "escalated": False,
         "escalate_note": "",
     }
+
+
+def triage_with_llm(user_text: str, user_context: dict | None = None) -> dict:
+    """规则引擎兜底 + LLM 增强表达。
+
+    先由本地规则确定风险级别与处置动作，再尝试用 LLM 优化措辞；
+    LLM 不可用或失败时自动回退规则结果。冲突时以本地规则为准（见 llm._merge）。
+    """
+    rule_result = triage(user_text)
+    try:
+        from . import llm as _llm
+        enhanced = _llm.enhance(user_text, rule_result, user_context)
+    except Exception as e:  # noqa: BLE001
+        print(f"[triage] llm error: {e}")
+        enhanced = None
+    return enhanced if enhanced else rule_result

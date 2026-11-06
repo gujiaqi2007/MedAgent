@@ -59,7 +59,7 @@
       <div class="bubble">
         <div class="row" style="margin-bottom:6px">${levelBadge(r.triage_level)} <b>${esc(r.title)}</b></div>
         ${r.plain ? `<div class="plain">${esc(r.plain)}</div>` : ''}
-        ${r.advice ? `<div class="advice">${esc(r.advice)}</div>` : ''}
+        ${r.advice ? `<div class="advice">${renderMarkdown(r.advice)}</div>` : ''}
         ${r.source ? `<div class="src">依据：${esc(r.source)}</div>` : ''}
         <div class="followups"></div>
       </div>`;
@@ -225,8 +225,13 @@
   (async function init() {
     try { await loadMe(); } catch (e) {}
     const role = localStorage.getItem('medagent_role') || 'user';
+    tagSections(role);
     renderSidebar(role, 'user');
     renderHero(role);
+    API.get('/api/ai/status').then(s => {
+      const tip = document.getElementById('ai-tip');
+      if (tip) tip.textContent = `当前模式：${s.mode}。可以先点下面的问题卡片选择答案；语音播报已把「120」读作「幺二零」。`;
+    }).catch(() => {});
     const d = document.createElement('div');
     d.className = 'msg ai';
     d.innerHTML = `<div class="avatar">🤖</div><div class="bubble"><div class="plain">您好，我是健康小助手。哪里不舒服，可以直接说，也可以点 🎤 说话。</div></div>`;

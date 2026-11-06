@@ -5,6 +5,28 @@ import os
 import sys
 from pathlib import Path
 
+
+def _load_dotenv() -> None:
+    """读取项目根目录 .env（可选，零依赖）。已存在的环境变量优先。"""
+    path = Path(__file__).resolve().parent.parent / ".env"
+    if not path.exists():
+        return
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except OSError:
+        pass
+
+
+_load_dotenv()
+
 # 是否由 PyInstaller 打包（frozen）
 _FROZEN = bool(getattr(sys, "frozen", False))
 
@@ -32,7 +54,20 @@ PORT = int(os.environ.get("MEDAGENT_PORT", "8000"))
 # 提醒调度轮询间隔（秒）
 REMINDER_POLL_SECONDS = 15
 
-# 可选 LLM（DeepSeek / OpenAI 兼容）增强对话；不配置则走纯规则引擎，完全离线可用。
+# ============================================================
+# AI 接入配置 —— 就在这里填写你的 API
+# ============================================================
+# 推荐方式：在项目根目录新建 .env 文件（不会提交到 git），写入：
+#     DEEPSEEK_API_KEY=sk-你的key
+#     DEEPSEEK_BASE_URL=https://api.deepseek.com
+#     DEEPSEEK_MODEL=deepseek-chat
+#
+# 也可直接用任意 OpenAI 兼容服务，例如：
+#     DEEPSEEK_BASE_URL=https://api.siliconflow.cn/v1
+#     DEEPSEEK_MODEL=Qwen/Qwen2.5-7B-Instruct
+#
+# 不填写 Key 时，程序完全离线运行（纯本地规则引擎），不影响使用。
+# ============================================================
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")

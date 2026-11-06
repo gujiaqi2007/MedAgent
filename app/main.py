@@ -330,7 +330,21 @@ async def chat(request: Request) -> Response:
 
     transcript.append({"role": "user", "text": message})
     full_text = " ".join(t["text"] for t in transcript if t["role"] == "user")
-    result = triage.triage(full_text)
+
+    # 组装用户上下文，供 LLM 生成个性化措辞（风险判定仍由本地规则决定）
+    user = db.query_one(
+        "SELECT name,gender,birth_date,medical_history,allergies,current_medications FROM users WHERE id=?",
+        (user_id,),
+    )
+    user_context = {
+        "name": user["name"] if user else None,
+        "gender": user["gender"] if user else None,
+        "birth_date": user["birth_date"] if user else None,
+        "medical_history": db.loads(user.get("medical_history"), []) if user else [],
+        "allergies": db.loads(user.get("allergies"), []) if user else [],
+        "current_medications": db.loads(user.get("current_medications"), []) if user else [],
+    }
+    result = triage.triage_with_llm(full_text, user_context)
     transcript.append({"role": "agent", "text": result["advice"]})
 
     notified = 0
@@ -360,12 +374,14 @@ async def chat(request: Request) -> Response:
         "plain": result.get("plain", ""),
         "advice": result["advice"],
         "source": result.get("source", ""),
+        "references": result.get("references", []),
         "suggest_120": result["suggest_120"],
         "notify": result["notify"],
         "notified_guardian": bool(notified),
         "followups": result["followups"],
         "disclaimer": result["disclaimer"],
         "escalated": result["escalated"],
+        "llm_enhanced": bool(result.get("llm_enhanced", False)),
     })
 
 
@@ -594,6 +610,16 @@ async def voice_tts(request: Request) -> Response:
     return _json(result)
 
 
+async def ai_status(_: Request) -> Response:
+    return _json({
+        "enabled": bool(config.DEEPSEEK_API_KEY),
+        "base_url": config.DEEPSEEK_BASE_URL,
+        "model": config.DEEPSEEK_MODEL,
+        "mode": "AI 增强" if config.DEEPSEEK_API_KEY else "本地规则（离线）",
+        "config_file": "app/config.py 或项目根目录 .env",
+    })
+
+
 # ---------- 静态前端 ----------
 def _html(page: str) -> FileResponse:
     return FileResponse(str(config.FRONTEND_DIR / page))
@@ -645,6 +671,7 @@ routes = [
 
     Route("/api/voice/normalize", voice_normalize, methods=["POST"]),
     Route("/api/voice/tts", voice_tts, methods=["POST"]),
+    Route("/api/ai/status", ai_status, methods=["GET"]),
 
     Route("/", lambda _: _html("index.html")),
     Route("/login", lambda _: _html("login.html")),

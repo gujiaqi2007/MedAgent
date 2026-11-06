@@ -187,6 +187,7 @@
   (async function init() {
     try { await loadMe(); } catch (e) {}
     const role = localStorage.getItem('medagent_role') || 'doctor';
+    tagSections(role);
     renderSidebar(role, 'doctor');
     renderHero(role);
     try { await loadUsers(); } catch (e) { toast('加载用户失败：' + e.message, 'err'); }
