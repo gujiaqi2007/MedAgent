@@ -249,20 +249,22 @@ function renderSidebar(role, active) {
   initScrollSpy();
 }
 
-/* 滚动时高亮当前所在的索引项 */
+/* 滚动时高亮当前所在的索引项（内容区内部滚动） */
 function initScrollSpy() {
+  const scroller = document.querySelector('.content');
   const links = Array.from(document.querySelectorAll('.nav a[data-sec]'));
-  if (!links.length) return;
+  if (!scroller || !links.length) return;
   const update = () => {
+    const base = scroller.getBoundingClientRect().top;
     let current = null;
     for (const a of links) {
       const el = document.getElementById(a.dataset.sec);
-      if (el && el.getBoundingClientRect().top <= 140) current = a.dataset.sec;
+      if (el && el.getBoundingClientRect().top - base <= 24) current = a.dataset.sec;
     }
     links.forEach(a => a.classList.toggle('active', a.dataset.sec === current));
   };
-  window.addEventListener('scroll', update, { passive: true });
-  document.querySelectorAll('.nav a[data-sec]').forEach(a => a.addEventListener('click', () => {
+  scroller.addEventListener('scroll', update, { passive: true });
+  links.forEach(a => a.addEventListener('click', () => {
     links.forEach(x => x.classList.toggle('active', x === a));
   }));
   update();
