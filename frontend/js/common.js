@@ -237,8 +237,8 @@ function renderSidebar(role, active) {
     <nav class="nav">
       <div class="nav-title">工作区</div>
       ${items.map(i => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"><span class="ico">${i.icon}</span>${i.label}</a>`).join('')}
-      <div class="nav-title">页面导航</div>
-      ${sections.map(([id, ic, label]) => `<a href="javascript:void(0)" data-sec="${id}" onclick="scrollToSec('${id}');return false;"><span class="ico">${ic}</span>${label}</a>`).join('')}
+      <div class="nav-title">内容索引</div>
+      ${sections.map(([id, , label], idx) => `<a href="javascript:void(0)" data-sec="${id}" onclick="scrollToSec('${id}');return false;"><span class="toc-idx">${idx + 1}</span>${label}</a>`).join('')}
     </nav>
     <div class="side-user">
       <div class="name">${esc(name)}</div>
@@ -246,6 +246,26 @@ function renderSidebar(role, active) {
       <button class="logout" onclick="logout()">↩ 退出登录后切换身份</button>
     </div>
     <div class="foot">© MedAgent · 非诊断工具</div>`;
+  initScrollSpy();
+}
+
+/* 滚动时高亮当前所在的索引项 */
+function initScrollSpy() {
+  const links = Array.from(document.querySelectorAll('.nav a[data-sec]'));
+  if (!links.length) return;
+  const update = () => {
+    let current = null;
+    for (const a of links) {
+      const el = document.getElementById(a.dataset.sec);
+      if (el && el.getBoundingClientRect().top <= 140) current = a.dataset.sec;
+    }
+    links.forEach(a => a.classList.toggle('active', a.dataset.sec === current));
+  };
+  window.addEventListener('scroll', update, { passive: true });
+  document.querySelectorAll('.nav a[data-sec]').forEach(a => a.addEventListener('click', () => {
+    links.forEach(x => x.classList.toggle('active', x === a));
+  }));
+  update();
 }
 
 function renderHero(role) {

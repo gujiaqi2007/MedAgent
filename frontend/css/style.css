@@ -50,11 +50,12 @@ button { font-family: inherit; }
 ::-webkit-scrollbar-thumb:hover { background: #c3cfdd; }
 
 /* ---------- 布局 ---------- */
-.app { display: flex; height: 100vh; overflow: hidden; }
+.app { min-height: 100vh; }
 .sidebar {
   width: 240px; flex: 0 0 240px; background: var(--panel);
   border-right: 1px solid var(--line); display: flex; flex-direction: column;
-  position: relative; height: 100vh; z-index: 20;
+  position: fixed; left: 0; top: 0; height: 100vh; z-index: 50;
+  padding-bottom: 30px;
 }
 .brand { display: flex; align-items: center; gap: 12px; padding: 22px 20px 18px; }
 .brand .logo {
@@ -79,6 +80,12 @@ button { font-family: inherit; }
 .nav a:hover { background: #f3f6fc; color: var(--ink); transform: translateX(2px); }
 .nav a.active { background: var(--grad); color: #fff; box-shadow: 0 6px 16px rgba(47, 107, 255, .28); }
 .nav .ico { width: 18px; text-align: center; }
+.nav .toc-idx {
+  width: 18px; height: 18px; flex: 0 0 18px; border-radius: 6px;
+  background: #eef3fb; color: #8a99ab; font-size: 11px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.nav a.active .toc-idx { background: rgba(255, 255, 255, .28); color: #fff; }
 
 .side-user {
   margin: 10px 14px; padding: 12px 14px; border-radius: 14px; background: #f7f9fd;
@@ -92,20 +99,21 @@ button { font-family: inherit; }
 }
 .logout:hover { text-decoration: underline; }
 .sidebar .foot {
-  padding: 8px 20px 12px; border-top: 1px solid var(--line);
-  font-size: 10.5px; color: #b6c2d1; letter-spacing: .2px; text-align: left;
+  position: absolute; left: 18px; right: 18px; bottom: 9px;
+  font-size: 10px; color: #b6c2d1; letter-spacing: .2px; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.main { margin-left: 240px; min-height: 100vh; display: flex; flex-direction: column; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   padding: 16px 26px; background: rgba(255, 255, 255, .92); backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--line); position: relative; z-index: 10; flex: 0 0 auto;
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 40; flex: 0 0 auto;
 }
 .topbar h1 { font-size: 18.5px; }
 .topbar .sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
-.content { padding: 22px 26px 70px; max-width: 1160px; width: 100%; margin: 0 auto; animation: fadeIn .35s ease; flex: 1; overflow-y: auto; }
-[id^="sec-"] { scroll-margin-top: 14px; }
+.content { padding: 22px 26px 70px; max-width: 1160px; width: 100%; margin: 0 auto; animation: fadeIn .35s ease; flex: 1; }
+[id^="sec-"] { scroll-margin-top: 86px; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
@@ -136,6 +144,7 @@ button { font-family: inherit; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 @media (max-width: 920px) {
   .sidebar { display: none; }
+  .main { margin-left: 0; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .content { padding: 16px; }
 }
