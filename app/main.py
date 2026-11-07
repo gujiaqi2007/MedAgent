@@ -11,6 +11,7 @@ import webbrowser
 from datetime import datetime, timedelta
 
 from starlette.applications import Starlette
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse, FileResponse, Response
 from starlette.routing import Route
@@ -682,7 +683,28 @@ routes = [
 
 routes += [Route(path, handler, methods=methods) for path, handler, methods in feature_routes]
 
+class StaticNoCacheMiddleware:
+    """强制静态资源重新校验，避免浏览器缓存旧 CSS/JS。"""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("path", "").startswith("/static/"):
+            async def send_wrapper(message):
+                if message.get("type") == "http.response.start":
+                    headers = MutableHeaders(scope=message)
+                    headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                    headers["Pragma"] = "no-cache"
+                    headers["Expires"] = "0"
+                await send(message)
+            await self.app(scope, receive, send_wrapper)
+        else:
+            await self.app(scope, receive, send)
+
+
 app = Starlette(debug=False, routes=routes)
+app.add_middleware(StaticNoCacheMiddleware)
 app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
 
 db.get_conn()

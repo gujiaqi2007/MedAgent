@@ -108,12 +108,12 @@ button { font-family: inherit; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   padding: 16px 26px; background: rgba(255, 255, 255, .92); backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 40; flex: 0 0 auto;
+  border-bottom: 1px solid var(--line); position: static; z-index: 1; flex: 0 0 auto;
 }
 .topbar h1 { font-size: 18.5px; }
 .topbar .sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
 .content { padding: 22px 26px 70px; max-width: 1160px; width: 100%; margin: 0 auto; animation: fadeIn .35s ease; flex: 1; }
-[id^="sec-"] { scroll-margin-top: 86px; }
+[id^="sec-"] { scroll-margin-top: 16px; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
