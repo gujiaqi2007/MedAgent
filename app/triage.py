@@ -1,7 +1,14 @@
-"""分诊规则引擎：基于关键词与医学规则的红/黄/绿分级。
+"""分诊规则引擎：两层匹配的红/黄/绿分级。
 
 设计原则（对应 baseline）：LLM 只负责「理解与表达」，风险判定由本规则引擎兜底，
-避免大模型幻觉直接触发告警。规则表由医学专业人士维护并版本化。
+避免大模型幻觉直接触发或弱化告警。规则表由医学专业人士维护并版本化。
+
+两层匹配：
+  第一层「危急硬匹配」：命中 critical 关键词 → 强制红色，绝不漏判（宁多勿少）。
+  第二层「规则库匹配」：按 keywords 计分选最佳规则，命中 escalate 则升级。
+
+规则库参考：国家卫健委《急诊病人病情分级指导原则（试行）》、CTAS、
+FAST/中风120、NEWS2、C-SSRS 等公开标准，为居家场景的保守版本。
 """
 from __future__ import annotations
 
@@ -17,9 +24,17 @@ with _RULES_PATH.open("r", encoding="utf-8") as f:
 
 CONDITIONS = _RULES["conditions"]
 DISCLAIMER = _RULES.get("disclaimer", "")
+VERSION = _RULES.get("version", "unknown")
 
 # 级别优先级：红 > 黄 > 绿
 _LEVEL_RANK = {"red": 3, "yellow": 2, "green": 1}
+
+# 否定词：出现在关键词之前时，认为该关键词被否定（"我没有胸痛" 不应判红）
+_NEGATIONS = ("没有", "没", "不", "无", "未", "非", "别", "否认")
+
+# 关键词得分低于此值时，触发 LLM 语义兜底匹配
+# （得分 >= 2 说明至少命中一个 2 字以上的关键词变体，可信度足够）
+_LLM_TRIGGER_SCORE = 2
 
 
 def _normalize(text: str) -> str:
@@ -30,67 +45,166 @@ def _normalize(text: str) -> str:
     return text.lower()
 
 
+def _is_negated(text: str, kw: str) -> bool:
+    """判断关键词是否被前置否定词修饰（如「没有胸痛」「不头晕」）。"""
+    idx = text.find(kw)
+    if idx <= 0:
+        return False
+    # 只看关键词前 3 个字符，避免跨句误判
+    prefix = text[max(0, idx - 3):idx]
+    return any(prefix.endswith(n) for n in _NEGATIONS)
+
+
 def _match_score(text: str, keywords: list[str]) -> int:
-    """返回匹配到的关键词数量（加权：长词命中更可信）。"""
+    """返回匹配到的关键词加权得分（长词命中更可信）。"""
     score = 0
     for kw in keywords:
-        if kw and kw in text:
+        if kw and kw in text and not _is_negated(text, kw):
             score += 1 + (len(kw) // 2)
     return score
 
 
-def triage(user_text: str) -> dict:
-    """对一段用户描述做分诊，返回结构化结论。
+def build_result(cond: dict) -> dict:
+    """由规则生成标准结果结构。"""
+    return {
+        "level": cond["level"],
+        "name": cond.get("name", ""),
+        "title": cond.get("title", ""),
+        "advice": cond.get("advice", ""),
+        "suggest_120": bool(cond.get("suggest_120", False)),
+        "notify": cond.get("notify", "none"),
+        "followups": cond.get("followups", []),
+        "disclaimer": DISCLAIMER,
+        "matched_condition_id": cond.get("id", ""),
+        "category": cond.get("category", ""),
+        "escalated": False,
+        "escalate_note": "",
+        "match_layer": "",
+    }
 
-    返回字段：
-      level: red | yellow | green
-      title, name, advice, suggest_120, notify, followups, disclaimer,
-      matched_condition_id, escalated (bool), escalate_note
-    """
-    text = _normalize(user_text)
-    if not text:
-        return _fallback()
 
+def _match_critical(text: str) -> dict | None:
+    """第一层：危急关键词硬匹配。命中即强制红色，取匹配分最高者。"""
     best = None
     best_score = 0
     for cond in CONDITIONS:
-        s = _match_score(text, cond.get("keywords", []))
+        crit = cond.get("critical")
+        if not crit:
+            continue
+        s = _match_score(text, crit)
         if s > best_score:
             best_score = s
             best = cond
-        elif s == best_score and best is not None:
-            # 同分取更高级别
-            if _LEVEL_RANK.get(cond["level"], 0) > _LEVEL_RANK.get(best["level"], 0):
-                best = cond
+    if best is None:
+        return None
+    result = build_result(best)
+    result["match_layer"] = "critical"
+    return result
 
-    if best is None or best_score == 0:
-        return _fallback()
 
-    result = {
-        "level": best["level"],
-        "name": best.get("name", ""),
-        "title": best.get("title", ""),
-        "advice": best.get("advice", ""),
-        "suggest_120": bool(best.get("suggest_120", False)),
-        "notify": best.get("notify", "none"),
-        "followups": best.get("followups", []),
-        "disclaimer": DISCLAIMER,
-        "matched_condition_id": best.get("id", ""),
-        "escalated": False,
-        "escalate_note": "",
-    }
+def _match_rules(text: str) -> tuple[dict | None, int]:
+    """第二层：规则库匹配。
 
-    # 绿色条件的升级：命中加重关键词 → 升级为黄色
+    选择策略「以最危险的信号为准」：优先取级别最高者；同级别时取匹配分最高者。
+    （不能按分数优先——否则多个轻症关键词累加会盖过单次命中的重症。）
+
+    返回 (结果 或 None, 选中规则的匹配分)。
+    """
+    best = None
+    best_score = 0
+    best_rank = 0
+    for cond in CONDITIONS:
+        s = _match_score(text, cond.get("keywords", []))
+        if s == 0:
+            continue
+        rank = _LEVEL_RANK.get(cond["level"], 0)
+        # 级别优先；同级别再看匹配分
+        if rank > best_rank or (rank == best_rank and s > best_score):
+            best_rank, best_score, best = rank, s, cond
+
+    if best is None:
+        return None, 0
+
+    result = build_result(best)
+    result["match_layer"] = "rules"
+
+    # 绿色/黄色条件的升级：命中加重关键词 → 提升级别
     esc = best.get("escalate")
     if esc and _match_score(text, esc.get("keywords", [])) > 0:
         result["level"] = esc.get("level", "yellow")
         result["escalated"] = True
         result["escalate_note"] = esc.get("note", "")
         result["notify"] = "guardian"
-        if result.get("escalate_note"):
+        if result["escalate_note"]:
             result["advice"] = result["escalate_note"] + "\n\n" + result["advice"]
 
-    return result
+    return result, best_score
+
+
+def triage(user_text: str, history: str = "") -> dict:
+    """对一段用户描述做两层分诊（含 LLM 语义兜底），返回结构化结论。
+
+    user_text: 用户最新一条消息（当前正在说的）
+    history:   同一会话此前的用户消息（用于跨句补充与安全兜底）
+
+    匹配策略（安全原则：以最危险的信号为准，只升不降）：
+      第一层 · 危急硬匹配   → 对「最新消息 + 历史」全文匹配，命中即强制红色
+                              （确定性，不交给 LLM；跨句补充细节也不会漏）
+      第二层 · 关键词匹配   → 分别对「最新消息」和「全文」匹配，取级别更高者；
+                              同级别时优先当前主诉，保证回答聚焦用户正在问的事
+                LLM 语义匹配 → 低分/未命中时才兜底调用，且只能升级
+
+    返回字段：
+      level: red | yellow | green
+      title, name, advice, suggest_120, notify, followups, disclaimer,
+      matched_condition_id, category, escalated, escalate_note, match_layer
+    """
+    text = _normalize(user_text)
+    if not text:
+        return _fallback()
+
+    full_text = _normalize(f"{history} {user_text}") if history else text
+
+    # ── 第一层：危急硬匹配对全文做（命中即红，绝不交给 LLM）──
+    critical = _match_critical(full_text)
+    if critical is not None:
+        return critical
+
+    # ── 第二层：关键词匹配 ──
+    # 当前主诉的结果
+    kw_latest, score_latest = _match_rules(text)
+    # 全文（含历史）的结果，用于捕捉此前出现过的更危险信号
+    if full_text != text:
+        kw_full, score_full = _match_rules(full_text)
+    else:
+        kw_full, score_full = kw_latest, score_latest
+
+    # 以最危险的信号为准：全文级别更高则采用全文结果；同级别保留当前主诉
+    kw_result, kw_score = kw_latest, score_latest
+    if kw_full is not None and (
+        kw_result is None
+        or _LEVEL_RANK.get(kw_full["level"], 0) > _LEVEL_RANK.get(kw_result["level"], 0)
+    ):
+        kw_result, kw_score = kw_full, score_full
+
+    if kw_result is not None and kw_score >= _LLM_TRIGGER_SCORE:
+        return kw_result
+
+    # ── 第三层：LLM 语义兜底（只能升级，不能降级）──
+    from . import llm as _llm
+    llm_result = _llm.match_rule(user_text)
+
+    if llm_result is not None:
+        if kw_result is None:
+            return llm_result
+        if _LEVEL_RANK.get(llm_result["level"], 0) > _LEVEL_RANK.get(kw_result["level"], 0):
+            return llm_result
+
+    if kw_result is not None:
+        return kw_result
+
+    # 全部未命中 → 保守兜底
+    return _fallback()
 
 
 def _fallback() -> dict:
@@ -104,18 +218,20 @@ def _fallback() -> dict:
         "followups": ["您目前最主要的不适是什么？", "症状持续多久了？", "是否正在服用相关药物？"],
         "disclaimer": DISCLAIMER,
         "matched_condition_id": "general",
+        "category": "",
         "escalated": False,
         "escalate_note": "",
+        "match_layer": "fallback",
     }
 
 
-def triage_with_llm(user_text: str, user_context: dict | None = None) -> dict:
+def triage_with_llm(user_text: str, user_context: dict | None = None, history: str = "") -> dict:
     """规则引擎兜底 + LLM 增强表达的分诊入口。
 
     先由规则引擎确定风险级别与动作，再尝试用 LLM 生成更自然、更共情的回答。
     若 LLM 不可用或失败，自动 fallback 到规则引擎结果，保证服务可用。
     """
-    rule_result = triage(user_text)
+    rule_result = triage(user_text, history)
     # 延迟导入，避免循环依赖
     from . import llm as _llm
     enhanced = _llm.call_llm(user_text, rule_result, user_context)

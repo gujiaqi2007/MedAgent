@@ -55,7 +55,8 @@ def _render_messages(user_text: str, rule_result: dict, user_context: dict | Non
         "- 不要编造用户没有提到的症状；\n"
         "- 输出必须是纯文本，不要使用 Markdown、表格、代码块等格式；\n"
         "- 回答控制在 300 字以内，避免过长；\n"
-        "- 不要使用‘一级’‘二级’‘三级’‘级别’等内部术语，用‘需要留意’‘需要重视’‘情况比较紧急’等大白话表达。\n\n"
+        "- 不要使用‘一级’‘二级’‘三级’‘级别’等内部术语，用‘需要留意’‘需要重视’‘情况比较紧急’等大白话表达；\n"
+        "- 只有当规则结果中 notify 不是 none 时，才可以提到已通知家人；notify 为 none 时绝不要提通知家人。\n\n"
         "请按以下 JSON 格式返回（不要带 Markdown 代码块）：\n"
         '{"title": "简短标题", "advice": "给用户的回复正文", "followups": ["追问1", "追问2"]}'
     )
@@ -118,6 +119,95 @@ def _parse_reply(text: str, rule_result: dict) -> dict:
         safe["followups"] = rule_result.get("followups", [])
     safe["llm_enhanced"] = True
     return safe
+
+
+_rules_digest_cache: str | None = None
+
+
+def _rules_digest() -> str:
+    """构造规则库摘要，供 LLM 做语义匹配（进程内缓存一次）。"""
+    global _rules_digest_cache
+    if _rules_digest_cache is None:
+        from . import triage as _triage
+        lines = []
+        for c in _triage.CONDITIONS:
+            kws = list(c.get("critical", [])) + list(c.get("keywords", []))
+            lines.append(f"{c['id']}|{c.get('name', '')}|{c['level']}|{'、'.join(kws)}")
+        _rules_digest_cache = "\n".join(lines)
+    return _rules_digest_cache
+
+
+def match_rule(user_text: str) -> dict | None:
+    """让 LLM 从规则库中做语义匹配，返回规则结果；不可用或失败返回 None。
+
+    仅用于关键词匹配未命中的兜底场景。LLM 只负责「选哪条规则」，
+    级别与动作仍由选中的规则本身决定，避免 LLM 自由发挥风险判定。
+    """
+    if not config.DEEPSEEK_API_KEY:
+        return None
+
+    client = _client()
+    if client is None:
+        return None
+
+    from . import triage as _triage
+
+    system = (
+        "你是医疗分诊路由助手。你的唯一任务是从给定规则库中，选出与用户描述语义最匹配的一条规则。"
+        "你不需要诊断，也不要编造规则库中不存在的 id。"
+    )
+    user_msg = (
+        f"规则库（格式：id|名称|级别|关键词）：\n{_rules_digest()}\n\n"
+        f"用户描述：{user_text}\n\n"
+        "请只返回 JSON，不要加任何其他文字：\n"
+        '{"rule_id": "<规则id>", "confidence": <0到1的小数>, "reason": "<20字以内的理由>"}\n'
+        "如果没有任何规则匹配，rule_id 返回 null。"
+    )
+
+    try:
+        response = client.post(
+            f"{config.DEEPSEEK_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": config.DEEPSEEK_MODEL,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_msg},
+                ],
+                "temperature": 0.1,
+                "max_tokens": 256,
+            },
+        )
+        response.raise_for_status()
+        content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not content:
+            return None
+
+        json_str = _extract_json(content)
+        if not json_str:
+            return None
+        data = json.loads(json_str)
+        rule_id = data.get("rule_id")
+        if not rule_id:
+            return None
+
+        # 校验 rule_id 必须真实存在于规则库
+        cond = next((c for c in _triage.CONDITIONS if c.get("id") == rule_id), None)
+        if cond is None:
+            print(f"[llm] 返回了不存在的 rule_id: {rule_id}")
+            return None
+
+        result = _triage.build_result(cond)
+        result["match_layer"] = "llm"
+        result["llm_confidence"] = data.get("confidence")
+        result["llm_reason"] = data.get("reason", "")
+        return result
+    except Exception as e:  # noqa: BLE001
+        print(f"[llm] match_rule failed: {e}")
+        return None
 
 
 def call_llm(user_text: str, rule_result: dict, user_context: dict | None = None) -> dict | None:
