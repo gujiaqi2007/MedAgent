@@ -52,7 +52,7 @@ button { font-family: inherit; }
 /* ---------- 布局 ---------- */
 .app { height: 100vh; overflow: hidden; }
 .sidebar {
-  width: 240px; flex: 0 0 240px; background: var(--panel);
+  width: 10cm; flex: 0 0 10cm; background: var(--panel);
   border-right: 1px solid var(--line); display: flex; flex-direction: column;
   position: fixed; left: 0; top: 0; height: 100vh; z-index: 50;
   padding-bottom: 30px;
@@ -104,7 +104,7 @@ button { font-family: inherit; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-.main { margin-left: 240px; height: 100vh; display: flex; flex-direction: column; min-width: 0; }
+.main { margin-left: 10cm; height: 100vh; display: flex; flex-direction: column; min-width: 0; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   padding: 16px 26px; background: rgba(255, 255, 255, .96); backdrop-filter: blur(10px);
