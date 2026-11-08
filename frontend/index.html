@@ -10,15 +10,32 @@
   <div class="auth-wrap">
     <div class="auth-card" style="text-align:center">
       <h1>✚ 健康守护</h1>
-      <p class="sub">正在进入…</p>
+      <p class="sub" id="tip">正在进入…</p>
+      <p style="margin-top:18px">
+        <a class="btn primary" href="/login" style="display:inline-block;text-decoration:none">进入登录页</a>
+      </p>
+      <p class="muted small" style="margin-top:16px;line-height:1.7">
+        如果一直没有跳转，请确认：<br>
+        1. 是通过 <b>http://127.0.0.1:8000</b> 打开，而不是双击 HTML 文件；<br>
+        2. 命令行里的服务窗口还在运行。
+      </p>
     </div>
   </div>
-  <script src="/static/js/api.js"></script>
   <script>
     (function () {
-      if (!API.token()) { location.replace('/login'); return; }
-      const role = localStorage.getItem('medagent_role');
-      location.replace(role === 'guardian' ? '/guardian' : role === 'doctor' ? '/doctor' : '/user');
+      var token = '', role = '';
+      try {
+        token = localStorage.getItem('medagent_token') || '';
+        role = localStorage.getItem('medagent_role') || '';
+      } catch (e) {}
+      var target = !token ? '/login'
+        : (role === 'guardian' ? '/guardian' : role === 'doctor' ? '/doctor' : '/user');
+      try { location.replace(target); } catch (e) {}
+      // 1.2 秒后如果还停留在这个页面，说明跳转没成功（常见于 file:// 直接打开）
+      setTimeout(function () {
+        var tip = document.getElementById('tip');
+        if (tip) tip.textContent = '没有自动跳转，请点下面的按钮，或用 http://127.0.0.1:8000 访问';
+      }, 1200);
     })();
   </script>
 </body>
