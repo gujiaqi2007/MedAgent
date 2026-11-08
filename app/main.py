@@ -68,6 +68,27 @@ def _series(user_id: str, mtype: str, days: int) -> list[dict]:
     return [{"value": r["value"], "at": r["measured_at"]} for r in rows]
 
 
+async def health(_: Request) -> Response:
+    """自检接口：确认服务、前端文件与 AI 配置是否正常。"""
+    fdir = config.FRONTEND_DIR
+
+    def ok(rel: str) -> bool:
+        return (fdir / rel).exists()
+
+    return _json({
+        "status": "ok",
+        "service": "MedAgent",
+        "time": db.now(),
+        "frontend_dir": str(fdir),
+        "frontend_files": {
+            "index.html": ok("index.html"),
+            "css/style.css": ok("css/style.css"),
+            "js/api.js": ok("js/api.js"),
+        },
+        "ai_enabled": bool(config.DEEPSEEK_API_KEY),
+    })
+
+
 # ---------- 鉴权 ----------
 async def register(request: Request) -> Response:
     body = await _body(request)
@@ -630,7 +651,7 @@ def _html(page: str) -> FileResponse:
 
 
 routes = [
-    Route("/api/health", lambda r: _json({"status": "ok", "service": "MedAgent", "time": db.now()})),
+    Route("/api/health", health),
     Route("/api/seed", do_seed, methods=["POST"]),
 
     Route("/api/auth/register", register, methods=["POST"]),
@@ -720,5 +741,15 @@ def _open_browser() -> None:
 
 if __name__ == "__main__":
     import uvicorn
+
+    print("=" * 56)
+    print(" 健康守护 MedAgent")
+    print(f" 前端目录: {config.FRONTEND_DIR}")
+    print(f" 访问地址: http://{config.HOST}:{config.PORT}")
+    print(f" 自检接口: http://{config.HOST}:{config.PORT}/api/health")
+    print(" 如果浏览器打开后没有样式/一直停在“正在进入”，")
+    print(" 请先访问上面的自检接口，确认服务与前端文件正常。")
+    print("=" * 56)
+
     threading.Timer(1.0, _open_browser).start()
     uvicorn.run(app, host=config.HOST, port=config.PORT, log_level="info")
