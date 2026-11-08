@@ -74,7 +74,8 @@
       document.querySelectorAll('.role-option').forEach(el => el.classList.toggle('on', el.dataset.role === r));
       const d = DEMO[r];
       document.getElementById('demo-hint').innerHTML =
-        `演示账号：<b>${d}</b> / <b>123456</b> · <a href="#" onclick="fillDemo();return false;">一键填入</a>`;
+        `演示账号：<b>${d}</b> / <b>123456</b> · <a href="#" onclick="fillDemo();return false;">一键填入</a>`
+        + `<br><span style="font-size:11px">首次启动会自动创建演示数据，无需手动准备</span>`;
     }
     function fillDemo() {
       document.getElementById('username').value = DEMO[role];

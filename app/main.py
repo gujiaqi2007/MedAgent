@@ -735,6 +735,21 @@ db.get_conn()
 reminders.start_scheduler()
 
 
+def _ensure_demo_data() -> None:
+    """首次运行（空库）时自动创建演示数据与账号，避免登录失败。"""
+    try:
+        users = db.query_one("SELECT COUNT(*) AS c FROM users")["c"]
+        accounts = db.query_one("SELECT COUNT(*) AS c FROM accounts")["c"]
+        if users == 0 or accounts == 0:
+            seed_mod.seed_demo()
+            print("[MedAgent] 已初始化演示数据与账号：zhang / zhangson / lidoctor（密码 123456）")
+    except Exception as e:  # noqa: BLE001
+        print(f"[MedAgent] 演示数据初始化失败：{e}")
+
+
+_ensure_demo_data()
+
+
 def _open_browser() -> None:
     webbrowser.open(f"http://{config.HOST}:{config.PORT}")
 
