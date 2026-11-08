@@ -1,13 +1,17 @@
-"""把 docs/DEMO_SCRIPT.md 转成排版好的 Word 文档。"""
+"""把 Markdown 转成排版好的 Word 文档。
+
+用法：python md_to_docx.py [输入.md] [输出.docx]
+"""
 import re
+import sys
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm
 from docx.oxml.ns import qn
 
 FONT = "微软雅黑"
-SRC = r"E:\MedAgent\docs\DEMO_SCRIPT.md"
-OUT = r"E:\MedAgent\docs\MedAgent_Demo_Script.docx"
+SRC = sys.argv[1] if len(sys.argv) > 1 else r"E:\MedAgent\docs\DEMO_SCRIPT.md"
+OUT = sys.argv[2] if len(sys.argv) > 2 else r"E:\MedAgent\docs\MedAgent_Demo_Script.docx"
 BLUE = (0x1A, 0x73, 0xE8)
 DARK = (0x1F, 0x2D, 0x3D)
 GRAY = (0x6B, 0x7A, 0x8D)
@@ -48,6 +52,22 @@ while i < len(lines):
         i += 1
         continue
 
+    if s.startswith("```"):
+        i += 1
+        code_lines = []
+        while i < len(lines) and not lines[i].strip().startswith("```"):
+            code_lines.append(lines[i])
+            i += 1
+        i += 1
+        for cl in code_lines:
+            cp = doc.add_paragraph()
+            run = cp.add_run(cl)
+            run.font.name = "Consolas"
+            run.font.size = Pt(9.5)
+            run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "宋体")
+            cp.paragraph_format.left_indent = Cm(0.4)
+            cp.paragraph_format.space_after = Pt(0)
+        continue
     if s.startswith("# "):
         p = doc.add_paragraph()
         p.alignment = 1
