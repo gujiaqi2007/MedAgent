@@ -1,43 +1,48 @@
-"""LLM 封装：症状理解与自然语言生成。
+"""LLM 模块：云端语义匹配与自然语言表达（可选，离线自动降级）。
 
-设计原则：
-- LLM 负责「理解与表达」：理解症状、生成更自然、更共情的回复。
-- 规则引擎负责「风险判定与动作」：红/黄/绿级别、是否建议 120、是否通知监护人。
-- 无 API Key 时完全离线，返回 None，调用方 fallback 到纯规则引擎。
+安全原则（与本地规则库的关系）：
+- 规则引擎决定 level / notify / suggest_120 / plain / source，LLM **不能**修改；
+- LLM 只负责两件事：① 从规则库中选一条规则（match_rule）；② 改写 advice / title / followups 的措辞；
+- 若 LLM 文本缺少规则要求的「关键指令」（如建议 120、通知监护人），自动补回规则原文，
+  确保**冲突时以本地规则为准**。
+
+配置位置：app/config.py（或项目根目录 .env 文件）。
+  在 .env 中填写：
+      DEEPSEEK_API_KEY=sk-xxxxxxxx
+      DEEPSEEK_BASE_URL=https://api.deepseek.com
+      DEEPSEEK_MODEL=deepseek-chat
+  也兼容任意 OpenAI 兼容服务（SiliconFlow / OpenAI 等）。
+
+未配置 API Key 时完全离线：match_rule()/call_llm() 返回 None，调用方自动使用纯规则结果。
 """
 from __future__ import annotations
 
 import json
-import os
+import re
+import urllib.error
+import urllib.request
 from typing import Any
 
 from . import config
 
-try:
-    import httpx
-    _HAS_HTTPX = True
-except ImportError:  # pragma: no cover
-    _HAS_HTTPX = False
+_DEFAULT_OPTIONS = ["是", "否", "不清楚"]
 
 
-def _client() -> httpx.Client | None:
-    if not _HAS_HTTPX:
-        return None
-    # 复用一个 client，减少连接开销
-    if not hasattr(_client, "instance"):
-        _client.instance = httpx.Client(timeout=30.0)
-    return _client.instance
+def enabled() -> bool:
+    return bool(getattr(config, "DEEPSEEK_API_KEY", ""))
 
 
 def _system_prompt() -> str:
     return (
-        "你是一位耐心的健康助手，面向老年人和慢病患者提供健康管理建议。"
+        "你是一位耐心、专业的健康助手，面向老年人和慢病患者提供健康管理建议。"
         "你必须遵守以下安全约束：\n"
-        "1. 你只能给出健康教育、缓解建议、就医指引，不能诊断疾病、不能开药。\n"
-        "2. 危急情况（胸痛、呼吸困难、中风征兆、持续高热、大出血等）必须建议立即拨打 120 或就医。\n"
-        "3. 回答要口语化、温和、有共情，避免使用医学术语和内部级别词（如‘一级’‘二级’‘三级’）。\n"
-        "4. 必须包含免责声明：本建议仅供参考，不能替代医生诊断。\n"
-        "5. 输出必须是纯文本，不要使用 Markdown 格式。"
+        "1. 你只能给出健康教育、缓解建议、就医指引，不能诊断疾病、不能开药、不承诺疗效。\n"
+        "2. 规则引擎已给出风险级别与处置动作，你不得更改其风险级别、是否拨打 120、是否通知监护人。\n"
+        "3. 危急情况（胸痛、呼吸困难、中风征兆、持续高热、大出血等）必须建议立即拨打 120 或就医。\n"
+        "4. 回答要口语化、温和、有共情，避免使用医学术语和内部级别词（如‘一级’‘二级’‘三级’）。\n"
+        "5. 不要编造用户没有提到的症状或病史。\n"
+        "6. 必须包含免责声明：本建议仅供参考，不能替代医生诊断。\n"
+        "7. 输出必须是纯文本，不要使用 Markdown 格式，控制在 300 字以内。"
     )
 
 
@@ -73,59 +78,90 @@ def _render_messages(
     ]
 
 
-def _clean_text(text: str) -> str:
+def _post_json(url: str, payload: dict, api_key: str, timeout: int = 60) -> dict:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _clean(text: str) -> str:
     """去除 Markdown 标记和多余空行。"""
-    import re
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)      # **bold**
     text = re.sub(r"__(.*?)__", r"\1", text)          # __bold__
     text = re.sub(r"\*(.*?)\*", r"\1", text)          # *italic*
     text = re.sub(r"_(.*?)_", r"\1", text)            # _italic_
     text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)     # `code` / ```code
     text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)  # # heading
-    text = re.sub(r"^[-*+]\s+", "", text, flags=re.M) # list
+    text = re.sub(r"^[-*+]\s+", "· ", text, flags=re.M)  # list
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
 def _extract_json(text: str) -> str | None:
     """从 LLM 回复中提取 JSON 字符串（支持 ```json 代码块或直接 JSON）。"""
-    import re
-    # 优先匹配 ```json ... ``` 块
     m = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
     if m:
         return m.group(1)
-    # 尝试匹配 { ... } 或 [ ... ] 区域
     m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", text)
-    if m:
-        return m.group(1)
-    return None
+    return m.group(1) if m else None
+
+
+def _norm_followups(items) -> list[dict]:
+    out = []
+    for it in items or []:
+        if isinstance(it, dict):
+            out.append({"q": it.get("q") or it.get("question") or "",
+                        "options": it.get("options") or _DEFAULT_OPTIONS})
+        else:
+            out.append({"q": str(it), "options": _DEFAULT_OPTIONS})
+    return out
+
+
+def _parse(text: str) -> dict:
+    raw = text.strip()
+    js = _extract_json(raw)
+    if not js:
+        return {}
+    try:
+        data = json.loads(js)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _merge(parsed: dict, rule: dict) -> dict:
+    """把 LLM 结果并入规则结果，安全字段以规则为准。"""
+    out = dict(rule)  # level / notify / suggest_120 / plain / source 等全部继承
+    advice = _clean(str(parsed.get("advice") or parsed.get("reply") or ""))
+    if not advice:
+        return rule  # 解析失败，直接用规则
+
+    # 关键指令补全：冲突时以本地规则为准
+    if rule.get("suggest_120") and ("120" not in advice and "幺二零" not in advice):
+        advice = (rule.get("advice") or "") + "\n\n" + advice
+    elif rule.get("notify") in ("guardian", "immediate") and ("监护" not in advice and "家人" not in advice):
+        advice = advice + "\n（已通知您的监护人）"
+
+    out["advice"] = advice
+    if parsed.get("title"):
+        out["title"] = _clean(str(parsed["title"]))
+    if isinstance(parsed.get("followups"), list) and parsed["followups"]:
+        out["followups"] = _norm_followups(parsed["followups"])
+    out["llm_enhanced"] = True
+    return out
 
 
 def _parse_reply(text: str, rule_result: dict) -> dict:
-    """从 LLM 回复中提取结构，若解析失败则返回规则结果。"""
-    raw = text.strip()
-    json_str = _extract_json(raw)
-
-    data: dict[str, Any] = {}
-    if json_str:
-        try:
-            data = json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
-
-    if not isinstance(data, dict):
-        data = {}
-
-    # 安全兜底：LLM 不能改变这些关键安全字段
-    safe = {**rule_result}
-    advice = data.get("advice") or data.get("reply") or raw
-    safe["advice"] = _clean_text(str(advice))
-    safe["title"] = _clean_text(data.get("title") or rule_result["title"])
-    safe["followups"] = data.get("followups") or rule_result.get("followups", [])
-    if not isinstance(safe["followups"], list):
-        safe["followups"] = rule_result.get("followups", [])
-    safe["llm_enhanced"] = True
-    return safe
+    """从 LLM 回复中提取结构，安全字段以规则结果为准。"""
+    return _merge(_parse(text), rule_result)
 
 
 _rules_digest_cache: str | None = None
@@ -144,6 +180,14 @@ def _rules_digest() -> str:
     return _rules_digest_cache
 
 
+def _chat(payload: dict, timeout: int = 60) -> str:
+    data = _post_json(
+        config.DEEPSEEK_BASE_URL.rstrip("/") + "/chat/completions",
+        payload, config.DEEPSEEK_API_KEY, timeout=timeout,
+    )
+    return (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+
+
 def match_rule(user_text: str, history: str = "") -> dict | None:
     """让 LLM 从规则库中做语义匹配，返回规则结果；不可用或失败返回 None。
 
@@ -151,11 +195,7 @@ def match_rule(user_text: str, history: str = "") -> dict | None:
     LLM 只负责「选哪条规则」，级别与动作仍由选中的规则本身决定，
     避免 LLM 自由发挥风险判定。
     """
-    if not config.DEEPSEEK_API_KEY:
-        return None
-
-    client = _client()
-    if client is None:
+    if not enabled():
         return None
 
     from . import triage as _triage
@@ -179,24 +219,15 @@ def match_rule(user_text: str, history: str = "") -> dict | None:
     )
 
     try:
-        response = client.post(
-            f"{config.DEEPSEEK_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": config.DEEPSEEK_MODEL,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_msg},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 256,
-            },
-        )
-        response.raise_for_status()
-        content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        content = _chat({
+            "model": config.DEEPSEEK_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_msg},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 256,
+        })
         if not content:
             return None
 
@@ -235,35 +266,17 @@ def call_llm(
     返回结构化的分诊结果；若 LLM 不可用则返回 None，调用方应 fallback 到规则引擎。
     history 只用于让回答接得上上下文（如「还是疼，比刚才厉害」），不参与风险判定。
     """
-    api_key = config.DEEPSEEK_API_KEY
-    if not api_key:
-        return None
-
-    client = _client()
-    if client is None:
+    if not enabled():
         return None
 
     messages = _render_messages(user_text, rule_result, user_context, history)
-    payload = {
-        "model": config.DEEPSEEK_MODEL,
-        "messages": messages,
-        "temperature": 0.6,
-        "max_tokens": 4096,
-    }
-
     try:
-        response = client.post(
-            f"{config.DEEPSEEK_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-        choice = data.get("choices", [{}])[0]
-        content = choice.get("message", {}).get("content", "")
+        content = _chat({
+            "model": config.DEEPSEEK_MODEL,
+            "messages": messages,
+            "temperature": 0.6,
+            "max_tokens": 4096,
+        })
         if not content:
             return None
         return _parse_reply(content, rule_result)
@@ -271,3 +284,8 @@ def call_llm(
         # 任何异常都不应阻断规则引擎结果
         print(f"[llm] call failed: {e}")
         return None
+
+
+def enhance(user_text: str, rule_result: dict, user_context: dict | None = None) -> dict | None:
+    """兼容旧接口：等价于 call_llm(user_text, rule_result, user_context)。"""
+    return call_llm(user_text, rule_result, user_context)

@@ -1,11 +1,13 @@
-"""分诊规则引擎：两层匹配的红/黄/绿分级。
+"""分诊规则引擎：三层匹配的红/黄/绿分级。
 
-设计原则（对应 baseline）：LLM 只负责「理解与表达」，风险判定由本规则引擎兜底，
+设计原则：LLM 只负责「理解与表达」，风险判定由本规则引擎兜底，
 避免大模型幻觉直接触发或弱化告警。规则表由医学专业人士维护并版本化。
 
-两层匹配：
+三层匹配：
   第一层「危急硬匹配」：命中 critical 关键词 → 强制红色，绝不漏判（宁多勿少）。
   第二层「规则库匹配」：按 keywords 计分选最佳规则，命中 escalate 则升级。
+  第三层「LLM 语义匹配」：关键词覆盖不了所有口语说法时，由 LLM 从规则库中选一条，
+                        只能升级、不能降级。
 
 规则库参考：国家卫健委《急诊病人病情分级指导原则（试行）》、CTAS、
 FAST/中风120、NEWS2、C-SSRS 等公开标准，为居家场景的保守版本。
@@ -16,22 +18,41 @@ import json
 import re
 from pathlib import Path
 
-_RULES_PATH = Path(__file__).parent / "data" / "triage_rules.json"
+_DATA_DIR = Path(__file__).parent / "data"
 
-# 加载规则（进程启动一次）
-with _RULES_PATH.open("r", encoding="utf-8") as f:
+with (_DATA_DIR / "triage_rules.json").open("r", encoding="utf-8") as f:
     _RULES = json.load(f)
 
 CONDITIONS = _RULES["conditions"]
+
+# 追加扩展规则（本地规则库扩展包），只补充主库中不存在的 id，避免重复
+_extra_path = _DATA_DIR / "triage_rules_extra.json"
+if _extra_path.exists():
+    with _extra_path.open("r", encoding="utf-8") as f:
+        _existing_ids = {c.get("id") for c in CONDITIONS}
+        for _c in json.load(f).get("conditions", []):
+            if _c.get("id") not in _existing_ids:
+                CONDITIONS.append(_c)
+                _existing_ids.add(_c.get("id"))
+
+# 合并权威文献引用
+_ref_path = _DATA_DIR / "references.json"
+if _ref_path.exists():
+    with _ref_path.open("r", encoding="utf-8") as f:
+        _REFS = json.load(f)
+    for _c in CONDITIONS:
+        _c.setdefault("references", _REFS.get(_c.get("id", ""), []))
+
 DISCLAIMER = _RULES.get("disclaimer", "")
 VERSION = _RULES.get("version", "unknown")
+SOURCE_NOTE = _RULES.get("source_note", "")
 
 # 级别优先级：红 > 黄 > 绿
 _LEVEL_RANK = {"red": 3, "yellow": 2, "green": 1}
+_DEFAULT_OPTIONS = ["是", "否", "不清楚"]
 
 # 否定词：出现在关键词之前时，认为该关键词被否定（"我没有胸痛" 不应判红）
 _NEGATIONS = ("没有", "没", "不", "无", "未", "非", "别", "否认")
-
 
 # 口语中的程度/填充词：去掉后“心脏有点疼”能落到“心脏疼”等关键词上
 _FILLERS = re.compile(
@@ -67,16 +88,30 @@ def _match_score(text: str, keywords: list[str]) -> int:
     return score
 
 
+def _norm_followups(items) -> list[dict]:
+    """统一追问格式为 {q, options}，前端按卡片渲染。"""
+    out = []
+    for it in items or []:
+        if isinstance(it, dict):
+            out.append({"q": it.get("q", ""), "options": it.get("options") or _DEFAULT_OPTIONS})
+        else:
+            out.append({"q": str(it), "options": _DEFAULT_OPTIONS})
+    return out
+
+
 def build_result(cond: dict) -> dict:
     """由规则生成标准结果结构。"""
     return {
         "level": cond["level"],
         "name": cond.get("name", ""),
         "title": cond.get("title", ""),
+        "plain": cond.get("plain", ""),
         "advice": cond.get("advice", ""),
+        "source": cond.get("source", ""),
+        "references": cond.get("references", []),
         "suggest_120": bool(cond.get("suggest_120", False)),
         "notify": cond.get("notify", "none"),
-        "followups": cond.get("followups", []),
+        "followups": _norm_followups(cond.get("followups", [])),
         "disclaimer": DISCLAIMER,
         "matched_condition_id": cond.get("id", ""),
         "category": cond.get("category", ""),
@@ -87,7 +122,7 @@ def build_result(cond: dict) -> dict:
 
 
 def _match_critical(text: str) -> dict | None:
-    """第一层：危急关键词硬匹配。命中即强制红色，取匹配分最高者。"""
+    """第一层：危急关键词硬匹配。命中即强制红色，同分取级别更高者。"""
     best = None
     best_score = 0
     for cond in CONDITIONS:
@@ -98,6 +133,9 @@ def _match_critical(text: str) -> dict | None:
         if s > best_score:
             best_score = s
             best = cond
+        elif s == best_score and s > 0 and best is not None:
+            if _LEVEL_RANK.get(cond["level"], 0) > _LEVEL_RANK.get(best["level"], 0):
+                best = cond
     if best is None:
         return None
     result = build_result(best)
@@ -160,8 +198,9 @@ def triage(user_text: str, history: str = "") -> dict:
 
     返回字段：
       level: red | yellow | green
-      title, name, advice, suggest_120, notify, followups, disclaimer,
-      matched_condition_id, category, escalated, escalate_note, match_layer
+      title, name, plain, advice, source, references, suggest_120, notify,
+      followups, disclaimer, matched_condition_id, category, escalated,
+      escalate_note, match_layer
     """
     text = _normalize(user_text)
     if not text:
@@ -217,10 +256,16 @@ def _fallback() -> dict:
         "level": "green",
         "name": "通用建议",
         "title": "请多留意身体感受",
+        "plain": "我没太听清您具体哪里不舒服，您可以用一句话说说，比如「膝盖疼」「头晕」「发烧」。",
         "advice": "感谢您的描述。目前没有识别到明确的危急信号，建议：多休息、注意补充水分、清淡饮食，并继续观察症状变化。若症状持续、加重，或出现胸痛、呼吸困难、言语不清、一侧无力等，请立即拨打 120 或联系监护人。",
+        "source": "通用健康提示",
+        "references": [],
         "suggest_120": False,
         "notify": "none",
-        "followups": ["您目前最主要的不适是什么？", "症状持续多久了？", "是否正在服用相关药物？"],
+        "followups": _norm_followups([
+            {"q": "您最主要是哪里不舒服？", "options": ["膝盖/腿疼", "头晕", "发烧", "肚子疼"]},
+            {"q": "这个不舒服持续多久了？", "options": ["今天", "两三天", "一周以上"]},
+        ]),
         "disclaimer": DISCLAIMER,
         "matched_condition_id": "general",
         "category": "",
