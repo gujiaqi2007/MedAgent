@@ -41,11 +41,18 @@ def _system_prompt() -> str:
     )
 
 
-def _render_messages(user_text: str, rule_result: dict, user_context: dict | None) -> list[dict[str, str]]:
+def _render_messages(
+    user_text: str,
+    rule_result: dict,
+    user_context: dict | None,
+    history: str = "",
+) -> list[dict[str, str]]:
     ctx = json.dumps(user_context or {}, ensure_ascii=False)
     rr = json.dumps(rule_result, ensure_ascii=False, indent=2)
+    history_part = f"会话上文：{history}\n" if history else ""
     user_content = (
-        f"用户描述：{user_text}\n"
+        f"{history_part}"
+        f"用户本轮描述：{user_text}\n"
         f"用户上下文：{ctx}\n"
         f"规则引擎判定结果（你**必须**遵守其中的 level、suggest_120、notify 字段，不得修改）：\n{rr}\n\n"
         "请根据以上信息，用中文生成一段给用户的回复。要求：\n"
@@ -137,11 +144,12 @@ def _rules_digest() -> str:
     return _rules_digest_cache
 
 
-def match_rule(user_text: str) -> dict | None:
+def match_rule(user_text: str, history: str = "") -> dict | None:
     """让 LLM 从规则库中做语义匹配，返回规则结果；不可用或失败返回 None。
 
-    仅用于关键词匹配未命中的兜底场景。LLM 只负责「选哪条规则」，
-    级别与动作仍由选中的规则本身决定，避免 LLM 自由发挥风险判定。
+    关键词只能覆盖有限说法，因此只要规则引擎尚未判红，就会调用本函数。
+    LLM 只负责「选哪条规则」，级别与动作仍由选中的规则本身决定，
+    避免 LLM 自由发挥风险判定。
     """
     if not config.DEEPSEEK_API_KEY:
         return None
@@ -156,9 +164,15 @@ def match_rule(user_text: str) -> dict | None:
         "你是医疗分诊路由助手。你的唯一任务是从给定规则库中，选出与用户描述语义最匹配的一条规则。"
         "你不需要诊断，也不要编造规则库中不存在的 id。"
     )
+    history_part = (
+        f"会话上文（仅供理解指代，不是本轮主诉）：{history}\n\n" if history else ""
+    )
     user_msg = (
         f"规则库（格式：id|名称|级别|关键词）：\n{_rules_digest()}\n\n"
-        f"用户描述：{user_text}\n\n"
+        f"{history_part}"
+        f"用户本轮描述：{user_text}\n\n"
+        "请判断本轮描述对应哪条规则（可按语义理解，不必拘泥于关键词字面；"
+        "若本轮只是「还是疼」「比刚才厉害」这类补充，可结合上文理解）。\n"
         "请只返回 JSON，不要加任何其他文字：\n"
         '{"rule_id": "<规则id>", "confidence": <0到1的小数>, "reason": "<20字以内的理由>"}\n'
         "如果没有任何规则匹配，rule_id 返回 null。"
@@ -210,10 +224,16 @@ def match_rule(user_text: str) -> dict | None:
         return None
 
 
-def call_llm(user_text: str, rule_result: dict, user_context: dict | None = None) -> dict | None:
+def call_llm(
+    user_text: str,
+    rule_result: dict,
+    user_context: dict | None = None,
+    history: str = "",
+) -> dict | None:
     """
     调用 LLM 生成更自然的回答。
     返回结构化的分诊结果；若 LLM 不可用则返回 None，调用方应 fallback 到规则引擎。
+    history 只用于让回答接得上上下文（如「还是疼，比刚才厉害」），不参与风险判定。
     """
     api_key = config.DEEPSEEK_API_KEY
     if not api_key:
@@ -223,7 +243,7 @@ def call_llm(user_text: str, rule_result: dict, user_context: dict | None = None
     if client is None:
         return None
 
-    messages = _render_messages(user_text, rule_result, user_context)
+    messages = _render_messages(user_text, rule_result, user_context, history)
     payload = {
         "model": config.DEEPSEEK_MODEL,
         "messages": messages,

@@ -32,16 +32,19 @@ _LEVEL_RANK = {"red": 3, "yellow": 2, "green": 1}
 # 否定词：出现在关键词之前时，认为该关键词被否定（"我没有胸痛" 不应判红）
 _NEGATIONS = ("没有", "没", "不", "无", "未", "非", "别", "否认")
 
-# 关键词得分低于此值时，触发 LLM 语义兜底匹配
-# （得分 >= 2 说明至少命中一个 2 字以上的关键词变体，可信度足够）
-_LLM_TRIGGER_SCORE = 2
+
+# 口语中的程度/填充词：去掉后“心脏有点疼”能落到“心脏疼”等关键词上
+_FILLERS = re.compile(
+    r"有点儿|有一点|一点儿|有点|有些|一些|稍微|特别|非常|十分|挺|蛮|比较|很|得慌|这边|那里|那边|那儿"
+)
 
 
 def _normalize(text: str) -> str:
-    """去空白与常见标点，便于关键词匹配。"""
+    """去空白、常见标点与口语填充词，便于关键词匹配。"""
     if not text:
         return ""
     text = re.sub(r"[\s,，。.!！?？、;；:：\"'“”‘’()（）\[\]【】]+", "", text)
+    text = _FILLERS.sub("", text)
     return text.lower()
 
 
@@ -142,7 +145,7 @@ def _match_rules(text: str) -> tuple[dict | None, int]:
 
 
 def triage(user_text: str, history: str = "") -> dict:
-    """对一段用户描述做两层分诊（含 LLM 语义兜底），返回结构化结论。
+    """对一段用户描述做分层分诊（关键词 + LLM 语义），返回结构化结论。
 
     user_text: 用户最新一条消息（当前正在说的）
     history:   同一会话此前的用户消息（用于跨句补充与安全兜底）
@@ -152,7 +155,8 @@ def triage(user_text: str, history: str = "") -> dict:
                               （确定性，不交给 LLM；跨句补充细节也不会漏）
       第二层 · 关键词匹配   → 分别对「最新消息」和「全文」匹配，取级别更高者；
                               同级别时优先当前主诉，保证回答聚焦用户正在问的事
-                LLM 语义匹配 → 低分/未命中时才兜底调用，且只能升级
+      第三层 · LLM 语义匹配 → 只要尚未判红就始终参与（关键词覆盖不了所有口语说法），
+                              由 LLM 从规则库中选一条规则，且只能升级
 
     返回字段：
       level: red | yellow | green
@@ -172,27 +176,28 @@ def triage(user_text: str, history: str = "") -> dict:
 
     # ── 第二层：关键词匹配 ──
     # 当前主诉的结果
-    kw_latest, score_latest = _match_rules(text)
+    kw_latest = _match_rules(text)[0]
     # 全文（含历史）的结果，用于捕捉此前出现过的更危险信号
-    if full_text != text:
-        kw_full, score_full = _match_rules(full_text)
-    else:
-        kw_full, score_full = kw_latest, score_latest
+    kw_full = _match_rules(full_text)[0] if full_text != text else kw_latest
 
     # 以最危险的信号为准：全文级别更高则采用全文结果；同级别保留当前主诉
-    kw_result, kw_score = kw_latest, score_latest
+    kw_result = kw_latest
     if kw_full is not None and (
         kw_result is None
         or _LEVEL_RANK.get(kw_full["level"], 0) > _LEVEL_RANK.get(kw_result["level"], 0)
     ):
-        kw_result, kw_score = kw_full, score_full
+        kw_result = kw_full
 
-    if kw_result is not None and kw_score >= _LLM_TRIGGER_SCORE:
+    # 关键词命中红色时已是最危险信号，无需再问 LLM（省一次调用与延迟）
+    if kw_result is not None and kw_result["level"] == "red":
         return kw_result
 
-    # ── 第三层：LLM 语义兜底（只能升级，不能降级）──
+    # ── 第三层：LLM 语义匹配（始终参与，只能升级，不能降级）──
+    # 关键词只能覆盖有限说法（“心脏有点疼”“胸口闷得慌”“嘴角有点歪”……），
+    # 因此只要不是已经判红，都让 LLM 从规则库中做一次语义匹配。
+    # LLM 只负责“选哪条规则”，级别与动作仍由规则本身决定。
     from . import llm as _llm
-    llm_result = _llm.match_rule(user_text)
+    llm_result = _llm.match_rule(user_text, history)
 
     if llm_result is not None:
         if kw_result is None:
@@ -234,5 +239,5 @@ def triage_with_llm(user_text: str, user_context: dict | None = None, history: s
     rule_result = triage(user_text, history)
     # 延迟导入，避免循环依赖
     from . import llm as _llm
-    enhanced = _llm.call_llm(user_text, rule_result, user_context)
+    enhanced = _llm.call_llm(user_text, rule_result, user_context, history)
     return enhanced if enhanced is not None else rule_result
